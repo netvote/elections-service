@@ -8,8 +8,10 @@ const HDWalletProvider = require("truffle-hdwallet-provider");
 const contract = require('truffle-contract');
 const uuid = require('uuid/v4');
 const crypto = require('crypto');
-
 const nJwt = require('njwt');
+
+const COLLECTION_HASH_SECRETS = "hashSecrets";
+const COLLECTION_VOTER_IDS = "voterIds";
 
 //CONFIG
 const mnemonic = functions.config().netvote.ropsten.admin.mnemonic;
@@ -23,6 +25,9 @@ const voteTokenSecret = functions.config().netvote.ropsten.votetokensecret;
 
 // for hmac-ing voterId
 const voterIdHmacSecret = functions.config().netvote.ropsten.voteridhashsecret;
+
+// for hmac-ing stored secrets
+const storageHashSecret = functions.config().netvote.ropsten.storagehashsecret;
 
 const sendError = (res, code, txt) => {
     res.status(code).send({"status":"error", "text": txt});
@@ -78,10 +83,32 @@ const validateFirebaseIdToken = (req, res, next) => {
 };
 
 const electionOwnerCheck = (req, res, next) => {
-    if(uidOwnsElection(req.user.uid, req.param.address)){
+    if(uidOwnsElection(req.user.uid, req.params.address)){
         return next();
     }
     forbidden(res);
+};
+
+const createHashKey = (electionId) => {
+    return new Promise(function (resolve, reject) {
+        let db = admin.firestore();
+        console.log("secret="+storageHashSecret+", electionId="+electionId);
+        const electionHmac = toHmac(electionId, storageHashSecret);
+        db.collection(COLLECTION_HASH_SECRETS).doc(electionHmac).get().then((doc)=>{
+            if(!doc.exists){
+                db.collection(COLLECTION_HASH_SECRETS).doc(electionHmac).set({
+                    secret: uuid()
+                }).then(() => {
+                    console.log("stored secret");
+                    resolve();
+                }).catch((e) => {
+                    reject(e);
+                })
+            }else{
+                resolve();
+            }
+        });
+    });
 };
 
 const generateKeys = (uid, electionId, count) => {
@@ -94,7 +121,7 @@ const generateKeys = (uid, electionId, count) => {
                 const key = uuid();
                 keys.push(key);
                 const hmacHex = calculateRegKey(electionId, key);
-                let ref = db.collection("voterIds").doc(hmacHex);
+                let ref = db.collection(COLLECTION_VOTER_IDS).doc(hmacHex);
                 batch.set(ref, {createdBy: uid, pool: electionId});
             }
             batch.commit().then(()=>{
@@ -107,14 +134,16 @@ const generateKeys = (uid, electionId, count) => {
 };
 
 const calculateRegKey = (electionId, key) => {
-    const hmac = crypto.createHmac('sha256', regKeySecret);
-    hmac.update(electionId + ":" + key);
-    return hmac.digest('hex');
+    return toHmac(electionId + ":" + key, regKeySecret);
 };
 
 const hmacVoterId = (voterId) => {
-    const hmac = crypto.createHmac('sha256', voterIdHmacSecret);
-    hmac.update(voterId);
+    return toHmac(voterId, voterIdHmacSecret);
+};
+
+const toHmac = (value, key) => {
+    const hmac = crypto.createHmac('sha256', key);
+    hmac.update(value);
     return hmac.digest('hex');
 };
 
@@ -127,13 +156,25 @@ const voterIdCheck = (req, res, next) => {
     let address = req.body.address;
     let hmac = calculateRegKey(address, key);
     let db = admin.firestore();
-    db.collection("voterIds").doc(hmac).get().then((doc)=>{
+    db.collection(COLLECTION_VOTER_IDS).doc(hmac).get().then((doc)=>{
         if(doc.exists && doc.data().pool === address){
             return next();
         }
         unauthorized(res);
     }).catch((e)=>{
         sendError(res, 500, e.message);
+    });
+};
+
+const voterTokenCheck = (req, res, next) => {
+    nJwt.verify(req.token, voteTokenSecret,function(err,verifiedJwt){
+        if(err){
+            unauthorized(res);
+        }else{
+            req.voter = verifiedJwt.body.sub;
+            req.election = verifiedJwt.body.scope;
+            next();
+        }
     });
 };
 
@@ -148,6 +189,7 @@ const createVoterJwt = (electionId, voterId) => {
     return jwt.compact();
 };
 
+// ADMIN APIs
 const adminApp = express();
 adminApp.use(cors());
 adminApp.use(cookieParser());
@@ -160,15 +202,32 @@ adminApp.post('/keys/:address', (req, res) => {
         sendError(res, 500, e.message);
     });
 });
-
+adminApp.post('/hashsecret/:address', (req, res) => {
+    createHashKey(req.params.address).then(()=>{
+        res.send({"status":"ok"});
+    }).catch((e)=>{
+        sendError(res, 500, e.message);
+    });
+});
 exports.admin = functions.https.onRequest(adminApp);
 
+// VOTER APIs
 const voterApp = express();
 voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
+
 voterApp.post('/auth', voterIdCheck, (req, res) => {
     res.send({token: createVoterJwt(req.body.address, req.token)});
 });
 
+voterApp.post('/cast', voterTokenCheck, (req, res) => {
+    let v = req.body.vote;
+    if(!v){
+        sendError(res, 400, "vote is required");
+    }else {
+        //TODO: cast vote
+        res.send({txId: uuid()});
+    }
+});
 
 exports.vote = functions.https.onRequest(voterApp);
