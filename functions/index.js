@@ -54,8 +54,12 @@ const validateFirebaseIdToken = (req, res, next) => {
             'Make sure you authorize your request by providing the following HTTP header:',
             'Authorization: Bearer <Firebase ID Token>',
             'or by passing a "__session" cookie.');
-        unauthorized(res);
-        return;
+        //TODO: remove, this is just testing
+        req.user = {
+            uid: "test123"
+        };
+        return next();
+        //unauthorized(res);
     }
 
     let idToken;
@@ -74,9 +78,6 @@ const validateFirebaseIdToken = (req, res, next) => {
 };
 
 const electionOwnerCheck = (req, res, next) => {
-    req.user = {
-        uid: "test123"
-    };
     if(uidOwnsElection(req.user.uid, req.param.address)){
         return next();
     }
@@ -150,12 +151,9 @@ const createVoterJwt = (electionId, voterId) => {
 const adminApp = express();
 adminApp.use(cors());
 adminApp.use(cookieParser());
-//adminApp.use(validateFirebaseIdToken);
+adminApp.use(validateFirebaseIdToken);
 adminApp.use(electionOwnerCheck);
 adminApp.post('/keys/:address', (req, res) => {
-    req.user = {
-        uid: "test123"
-    };
     generateKeys(req.user.uid, req.params.address, req.body.count).then((keys) => {
         res.send(keys);
     }).catch((e)=>{
@@ -168,8 +166,9 @@ exports.admin = functions.https.onRequest(adminApp);
 const voterApp = express();
 voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
-voterApp.use(voterIdCheck);
-voterApp.post('/auth', (req, res) => {
+voterApp.post('/auth', voterIdCheck, (req, res) => {
     res.send({token: createVoterJwt(req.body.address, req.token)});
 });
+
+
 exports.vote = functions.https.onRequest(voterApp);
