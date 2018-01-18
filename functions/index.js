@@ -9,14 +9,23 @@ const contract = require('truffle-contract');
 const uuid = require('uuid/v4');
 const crypto = require('crypto');
 
+const nJwt = require('njwt');
+
 //CONFIG
 const mnemonic = functions.config().netvote.ropsten.admin.mnemonic;
 const apiUrl = functions.config().netvote.ropsten.apiurl;
+
+// for hmac-ing reg key for storage
 const regKeySecret = functions.config().netvote.ropsten.voterkeysecret;
+
+// for signing JWT
 const voteTokenSecret = functions.config().netvote.ropsten.votetokensecret;
 
+// for hmac-ing voterId
+const voterIdHmacSecret = functions.config().netvote.ropsten.voteridhashsecret;
+
 const sendError = (res, code, txt) => {
-    res.status(code).send({"status":"error", "text": txt);
+    res.status(code).send({"status":"error", "text": txt});
 };
 
 const unauthorized = (res) => {
@@ -83,7 +92,7 @@ const generateKeys = (uid, electionId, count) => {
             for (let i = 0; i < count; i++) {
                 const key = uuid();
                 keys.push(key);
-                const hmacHex = toHmac(electionId, key);
+                const hmacHex = calculateRegKey(electionId, key);
                 let ref = db.collection("voterIds").doc(hmacHex);
                 batch.set(ref, {createdBy: uid, pool: electionId});
             }
@@ -96,9 +105,15 @@ const generateKeys = (uid, electionId, count) => {
     });
 };
 
-const toHmac = (electionId, key) => {
+const calculateRegKey = (electionId, key) => {
     const hmac = crypto.createHmac('sha256', regKeySecret);
     hmac.update(electionId + ":" + key);
+    return hmac.digest('hex');
+};
+
+const hmacVoterId = (voterId) => {
+    const hmac = crypto.createHmac('sha256', voterIdHmacSecret);
+    hmac.update(voterId);
     return hmac.digest('hex');
 };
 
@@ -109,7 +124,7 @@ const uidOwnsElection = (uid, electionId) => {
 const voterIdCheck = (req, res, next) => {
     let key = req.token;
     let address = req.body.address;
-    let hmac = toHmac(address, key);
+    let hmac = calculateRegKey(address, key);
     let db = admin.firestore();
     db.collection("voterIds").doc(hmac).get().then((doc)=>{
         if(doc.exists && doc.data().pool === address){
@@ -119,6 +134,17 @@ const voterIdCheck = (req, res, next) => {
     }).catch((e)=>{
         sendError(res, 500, e.message);
     });
+};
+
+const createVoterJwt = (electionId, voterId) => {
+    let claims = {
+        iss: "https://netvote.io/",
+        sub: hmacVoterId(electionId+":"+voterId),
+        scope: electionId
+    };
+    let jwt = nJwt.create(claims,voteTokenSecret);
+    jwt.setExpiration(new Date().getTime() + (60*60*1000));
+    return jwt.compact();
 };
 
 const adminApp = express();
@@ -144,6 +170,6 @@ voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
 voterApp.use(voterIdCheck);
 voterApp.post('/auth', (req, res) => {
-    res.send("valid");
+    res.send({token: createVoterJwt(req.body.address, req.token)});
 });
 exports.vote = functions.https.onRequest(voterApp);
