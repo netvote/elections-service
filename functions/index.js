@@ -14,6 +14,7 @@ const nJwt = require('njwt');
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
+const COLLECTION_VOTE_TX = "voteTransaction";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -30,7 +31,6 @@ KeyRevealerElection.defaults({
     gas: 4612388,
     gasPrice: 1000000000000
 });
-
 
 const GatewayElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
 const gatewayProvider = new HDWalletProvider(mnemonic, apiUrl);
@@ -123,6 +123,15 @@ const removeHashKey = (electionId, collection) => {
     let db = admin.firestore();
     const electionHmac = toHmac(electionId, storageHashSecret);
     return db.collection(collection).doc(electionHmac).delete();
+};
+
+const submitVoteTx = (electionId, voteId, encryptedVote) => {
+    let db = admin.firestore();
+    return db.collection(COLLECTION_VOTE_TX).add({
+        address: electionId,
+        voteId: voteId,
+        encryptedVote: encryptedVote
+    });
 };
 
 const getHashKey = (electionId, collection) => {
@@ -304,14 +313,27 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
             voteId = gatewayWeb3.sha3(voteIdHmac);
             return encrypt(vote, req.election);
         }).then((encryptedVote)=>{
-            return GatewayElection.at(req.election).castVote(voteId, encryptedVote);
-        }).then((result)=>{
-            res.send({txId: result.tx});
+            return submitVoteTx(req.election, voteId, encryptedVote);
+        }).then((jobRef)=>{
+            res.send({txId: jobRef.id});
         }).catch((e) => {
             console.error(e);
             sendError(res, 500, e.message)
         });
     }
 });
+
+exports.castVote = functions.firestore
+    .document(COLLECTION_VOTE_TX+'/{id}')
+    .onCreate(event => {
+        let voteObj = event.data.data();
+        console.log("sending tx from "+gatewayProvider.getAddress()+": "+JSON.stringify(voteObj));
+        return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx)=>{
+            return event.data.ref.set({
+                tx: tx.tx,
+                status: "complete"
+            }, {merge: true});
+        });
+    });
 
 exports.vote = functions.https.onRequest(voterApp);
