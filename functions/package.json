@@ -9,6 +9,7 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
+    "@netvote/elections-solidity": "^1.0.0",
     "cookie-parser": "^1.4.3",
     "cors": "^2.8.4",
     "express": "^4.16.2",
@@ -18,7 +19,8 @@
     "njwt": "^0.4.0",
     "truffle-contract": "^3.0.1",
     "truffle-hdwallet-provider": "0.0.3",
-    "uuid": "^3.2.1"
+    "uuid": "^3.2.1",
+    "web3": "^0.20.4"
   },
   "private": true
 }
