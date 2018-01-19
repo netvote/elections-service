@@ -1,0 +1,28 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /hashSecrets/{id} {
+        allow read, write: if false;
+    }
+
+    match /voterIds/{id} {
+        allow read, write: if false;
+    }
+
+    match /ballot/{id} {
+        allow read, write: if true;
+    }
+
+    match /org/{id} {
+        allow read, write: if true;
+    }
+
+    match /orguser/{id} {
+        allow read, write: if true;
+    }
+
+    match /user/{id} {
+        allow read, write: if true;
+    }
+  }
+}
