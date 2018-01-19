@@ -22,13 +22,25 @@ const mnemonic = functions.config().netvote.ropsten.admin.mnemonic;
 const apiUrl = functions.config().netvote.ropsten.apiurl;
 
 const KeyRevealerElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
-const revealerElection = new HDWalletProvider(mnemonic, apiUrl);
-KeyRevealerElection.setProvider(revealerElection);
+const revealerProvider = new HDWalletProvider(mnemonic, apiUrl);
+KeyRevealerElection.setProvider(revealerProvider);
+let revealerWeb3 = new Web3(revealerProvider);
+revealerWeb3.eth.defaultAccount = revealerProvider.getAddress();
+KeyRevealerElection.defaults({
+    gas: 4612388,
+    gasPrice: 1000000000000
+});
+
 
 const GatewayElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
 const gatewayProvider = new HDWalletProvider(mnemonic, apiUrl);
 GatewayElection.setProvider(gatewayProvider);
-web3 = new Web3(gatewayProvider);
+let gatewayWeb3 = new Web3(gatewayProvider);
+gatewayWeb3.eth.defaultAccount = gatewayProvider.getAddress();
+GatewayElection.defaults({
+    gas: 4612388,
+    gasPrice: 1000000000000
+});
 
 // for hmac-ing reg key for storage
 const regKeySecret = functions.config().netvote.ropsten.voterkeysecret;
@@ -96,7 +108,7 @@ const validateFirebaseIdToken = (req, res, next) => {
 };
 
 const electionOwnerCheck = (req, res, next) => {
-    uidOwnsElection(req.user.uid, req.params.address).then((match)=>{
+    uidOwnsElection(req.user.uid, req.body.address).then((match)=>{
         if(match){
             return next();
         }
@@ -232,25 +244,39 @@ adminApp.use(cors());
 adminApp.use(cookieParser());
 adminApp.use(validateFirebaseIdToken);
 adminApp.use(electionOwnerCheck);
-adminApp.post('/keys/:address', (req, res) => {
-    generateKeys(req.user.uid, req.params.address, req.body.count).then((keys) => {
+adminApp.post('/keys', (req, res) => {
+    if(!req.body.address || !req.body.count){
+        sendError(res, 400, "count & address are required");
+        return;
+    }
+    generateKeys(req.user.uid, req.body.address, req.body.count).then((keys) => {
         res.send(keys);
     }).catch((e)=>{
         sendError(res, 500, e.message);
     });
 });
-adminApp.post('/hashsecret/:address', (req, res) => {
-    getHashKey(req.params.address, COLLECTION_HASH_SECRETS).then((s)=>{
+adminApp.post('/hashsecret', (req, res) => {
+    if(!req.body.address){
+        sendError(res, 400, "address is required");
+        return;
+    }
+    getHashKey(req.body.address, COLLECTION_HASH_SECRETS).then((s)=>{
         res.send({"status":"ok"});
     }).catch((e)=>{
         sendError(res, 500, e.message);
     });
 });
-adminApp.post('/encryption/:address', (req, res) => {
-    getHashKey(req.params.address, COLLECTION_ENCRYPTION_KEYS).then((s)=>{
-        return KeyRevealerElection.at(req.params.address).setPrivateKey(s)
-    }).then((res)=>{
-        return removeHashKey(req.params.address, COLLECTION_HASH_SECRETS)
+adminApp.post('/encryption', (req, res) => {
+    if(!req.body.address){
+        sendError(res, 400, "address is required");
+        return;
+    }
+    getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((s)=>{
+        return KeyRevealerElection.at(req.body.address).setPrivateKey(s)
+    }).then(()=>{
+        return removeHashKey(req.body.address, COLLECTION_HASH_SECRETS)
+    }).then(()=>{
+        res.send({"status":"success"});
     }).catch((e)=>{
         sendError(res, 500, e.message);
     });
@@ -267,16 +293,16 @@ voterApp.post('/auth', voterIdCheck, (req, res) => {
 });
 
 voterApp.post('/cast', voterTokenCheck, (req, res) => {
-    let vote = req.body.vote;
-
+    let encodedVote = req.body.vote;
+    let vote = Buffer.from(encodedVote, 'base64');
     if(!vote){
         sendError(res, 400, "vote is required");
     } else {
         let voteId = "";
         getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret)=> {
             const voteIdHmac = toHmac(req.election+":"+req.voter, secret);
-            voteId = web3.sha3(voteIdHmac);
-            return encrypt(req.election, vote)
+            voteId = gatewayWeb3.sha3(voteIdHmac);
+            return encrypt(vote, req.election);
         }).then((encryptedVote)=>{
             return GatewayElection.at(req.election).castVote(voteId, encryptedVote);
         }).then((result)=>{
