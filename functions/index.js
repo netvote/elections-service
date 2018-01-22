@@ -4,12 +4,9 @@ admin.initializeApp(functions.config().firebase);
 const cookieParser = require('cookie-parser');
 const express = require('express');
 const cors = require('cors');
-const HDWalletProvider = require("truffle-hdwallet-provider");
-const contract = require('truffle-contract');
-const Web3 = require("web3");
-const uuid = require('uuid/v4');
-const crypto = require('crypto');
-const nJwt = require('njwt');
+
+let crypto;
+let nJwt;
 
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
@@ -22,30 +19,6 @@ const ENCRYPT_ALGORITHM = "aes-256-cbc";
 const mnemonic = functions.config().netvote.ropsten.admin.mnemonic;
 const apiUrl = functions.config().netvote.ropsten.apiurl;
 
-const KeyRevealerElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
-const revealerProvider = new HDWalletProvider(mnemonic, apiUrl);
-KeyRevealerElection.setProvider(revealerProvider);
-let revealerWeb3 = new Web3(revealerProvider);
-revealerWeb3.eth.defaultAccount = revealerProvider.getAddress();
-KeyRevealerElection.defaults({
-    from: revealerProvider.getAddress(),
-    chainId: 3,
-    gas: 4512388,
-    gasPrice: 1000000000000
-});
-
-const GatewayElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
-const gatewayProvider = new HDWalletProvider(mnemonic, apiUrl);
-GatewayElection.setProvider(gatewayProvider);
-let gatewayWeb3 = new Web3(gatewayProvider);
-gatewayWeb3.eth.defaultAccount = gatewayProvider.getAddress();
-GatewayElection.defaults({
-    from: gatewayProvider.getAddress(),
-    chainId: 3,
-    gas: 4512388,
-    gasPrice: 1000000000000
-});
-
 // for hmac-ing reg key for storage
 const regKeySecret = functions.config().netvote.ropsten.voterkeysecret;
 
@@ -57,6 +30,81 @@ const voterIdHmacSecret = functions.config().netvote.ropsten.voteridhashsecret;
 
 // for hmac-ing stored secrets
 const storageHashSecret = functions.config().netvote.ropsten.storagehashsecret;
+
+let uuid;
+
+let HDWalletProvider;
+let contract;
+let Web3;
+
+let KeyRevealerElection;
+let revealerProvider;
+let revealerWeb3;
+
+let GatewayElection;
+let gatewayProvider;
+let gatewayWeb3;
+
+const initUuid = () => {
+    if(!uuid) {
+        uuid = require('uuid/v4');
+    }
+};
+
+const initJwt = () => {
+    if(!nJwt) {
+        nJwt = require('njwt');
+    }
+};
+
+const initCrypto = () => {
+    if(!crypto){
+        crypto = require('crypto');
+    }
+};
+
+const initEth = () => {
+    if(!HDWalletProvider) {
+        HDWalletProvider = require("truffle-hdwallet-provider");
+        contract = require('truffle-contract');
+        Web3 = require("web3");
+    }
+}
+
+const initGateway = () => {
+    if(!GatewayElection){
+        initEth();
+        GatewayElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
+        gatewayProvider = new HDWalletProvider(mnemonic, apiUrl);
+        GatewayElection.setProvider(gatewayProvider);
+        gatewayWeb3 = new Web3(gatewayProvider);
+        gatewayWeb3.eth.defaultAccount = gatewayProvider.getAddress();
+        GatewayElection.defaults({
+            from: gatewayProvider.getAddress(),
+            chainId: 3,
+            gas: 4512388,
+            gasPrice: 1000000000000
+        });
+    }
+};
+
+const initRevealer = () => {
+    if(!KeyRevealerElection){
+        initEth();
+        KeyRevealerElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
+        revealerProvider = new HDWalletProvider(mnemonic, apiUrl);
+        KeyRevealerElection.setProvider(revealerProvider);
+        revealerWeb3 = new Web3(revealerProvider);
+        revealerWeb3.eth.defaultAccount = revealerProvider.getAddress();
+        KeyRevealerElection.defaults({
+            from: revealerProvider.getAddress(),
+            chainId: 3,
+            gas: 4512388,
+            gasPrice: 1000000000000
+        });
+    }
+};
+
 
 const sendError = (res, code, txt) => {
     res.status(code).send({"status":"error", "text": txt});
@@ -139,6 +187,7 @@ const submitVoteTx = (electionId, voteId, encryptedVote) => {
 };
 
 const getHashKey = (electionId, collection) => {
+    initUuid();
     return new Promise(function (resolve, reject) {
         let db = admin.firestore();
         const electionHmac = toHmac(electionId, storageHashSecret);
@@ -158,6 +207,7 @@ const getHashKey = (electionId, collection) => {
 }
 
 const generateKeys = (uid, electionId, count) => {
+    initUuid();
     return new Promise(function (resolve, reject) {
         let db = admin.firestore();
         let batch = db.batch();
@@ -188,12 +238,14 @@ const hmacVoterId = (voterId) => {
 };
 
 const toHmac = (value, key) => {
+    initCrypto();
     const hmac = crypto.createHmac('sha256', key);
     hmac.update(value);
     return hmac.digest('hex');
 };
 
 const uidOwnsElection = (uid, electionId) => {
+    initGateway();
     return new Promise(function (resolve, reject) {
         GatewayElection.at(electionId).createdBy().then((createdBy) => {
             resolve(createdBy === uid);
@@ -217,6 +269,7 @@ const voterIdCheck = (req, res, next) => {
 };
 
 const voterTokenCheck = (req, res, next) => {
+    initJwt();
     nJwt.verify(req.token, voteTokenSecret,function(err,verifiedJwt){
         if(err){
             unauthorized(res);
@@ -229,6 +282,7 @@ const voterTokenCheck = (req, res, next) => {
 };
 
 const createVoterJwt = (electionId, voterId) => {
+    initJwt();
     let claims = {
         iss: "https://netvote.io/",
         sub: hmacVoterId(electionId+":"+voterId),
@@ -240,6 +294,7 @@ const createVoterJwt = (electionId, voterId) => {
 };
 
 const encrypt = (text, electionId) => {
+    initCrypto();
     return new Promise(function (resolve, reject) {
         getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS).then((encryptionKey) => {
             let cipher = crypto.createCipher(ENCRYPT_ALGORITHM, encryptionKey);
@@ -282,6 +337,7 @@ adminApp.post('/hashsecret', (req, res) => {
     });
 });
 adminApp.post('/encryption', (req, res) => {
+    initRevealer();
     if(!req.body.address){
         sendError(res, 400, "address is required");
         return;
@@ -309,6 +365,8 @@ voterApp.post('/auth', voterIdCheck, (req, res) => {
 });
 
 voterApp.post('/cast', voterTokenCheck, (req, res) => {
+    initGateway();
+    initCrypto();
     let encodedVote = req.body.vote;
     let vote = Buffer.from(encodedVote, 'base64');
     if(!vote){
@@ -333,6 +391,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
 exports.castVote = functions.firestore
     .document(COLLECTION_VOTE_TX+'/{id}')
     .onCreate(event => {
+        initGateway();
         let voteObj = event.data.data();
         console.log("sending tx from "+gatewayProvider.getAddress()+": "+JSON.stringify(voteObj));
         return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx)=>{
