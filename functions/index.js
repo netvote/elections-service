@@ -28,7 +28,9 @@ KeyRevealerElection.setProvider(revealerProvider);
 let revealerWeb3 = new Web3(revealerProvider);
 revealerWeb3.eth.defaultAccount = revealerProvider.getAddress();
 KeyRevealerElection.defaults({
-    gas: 4612388,
+    from: revealerProvider.getAddress(),
+    chainId: 3,
+    gas: 4512388,
     gasPrice: 1000000000000
 });
 
@@ -38,7 +40,9 @@ GatewayElection.setProvider(gatewayProvider);
 let gatewayWeb3 = new Web3(gatewayProvider);
 gatewayWeb3.eth.defaultAccount = gatewayProvider.getAddress();
 GatewayElection.defaults({
-    gas: 4612388,
+    from: gatewayProvider.getAddress(),
+    chainId: 3,
+    gas: 4512388,
     gasPrice: 1000000000000
 });
 
@@ -261,6 +265,7 @@ adminApp.post('/keys', (req, res) => {
     generateKeys(req.user.uid, req.body.address, req.body.count).then((keys) => {
         res.send(keys);
     }).catch((e)=>{
+        console.error(e);
         sendError(res, 500, e.message);
     });
 });
@@ -272,6 +277,7 @@ adminApp.post('/hashsecret', (req, res) => {
     getHashKey(req.body.address, COLLECTION_HASH_SECRETS).then((s)=>{
         res.send({"status":"ok"});
     }).catch((e)=>{
+        console.error(e);
         sendError(res, 500, e.message);
     });
 });
@@ -281,12 +287,13 @@ adminApp.post('/encryption', (req, res) => {
         return;
     }
     getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((s)=>{
-        return KeyRevealerElection.at(req.body.address).setPrivateKey(s)
+        return KeyRevealerElection.at(req.body.address).setPrivateKey(s, {from: revealerProvider.getAddress()})
     }).then(()=>{
         return removeHashKey(req.body.address, COLLECTION_HASH_SECRETS)
     }).then(()=>{
         res.send({"status":"success"});
     }).catch((e)=>{
+        console.error(e);
         sendError(res, 500, e.message);
     });
 });
