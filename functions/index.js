@@ -12,6 +12,7 @@ const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
 const COLLECTION_VOTE_TX = "voteTransaction";
+const COLLECTION_ENCRYPTION_TX = "postEncryptionTx";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -177,10 +178,18 @@ const removeHashKey = (electionId, collection) => {
     return db.collection(collection).doc(electionHmac).delete();
 };
 
-const submitVoteTx = (electionId, voteId, encryptedVote) => {
+const submitEncryptTx = (address, key) => {
+    let db = admin.firestore();
+    return db.collection(COLLECTION_ENCRYPTION_TX).add({
+        address: address,
+        key: key
+    });
+};
+
+const submitVoteTx = (address, voteId, encryptedVote) => {
     let db = admin.firestore();
     return db.collection(COLLECTION_VOTE_TX).add({
-        address: electionId,
+        address: address,
         voteId: voteId,
         encryptedVote: encryptedVote
     });
@@ -342,17 +351,37 @@ adminApp.post('/encryption', (req, res) => {
         sendError(res, 400, "address is required");
         return;
     }
-    getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((s)=>{
-        return KeyRevealerElection.at(req.body.address).setPrivateKey(s, {from: revealerProvider.getAddress()})
-    }).then(()=>{
-        return removeHashKey(req.body.address, COLLECTION_HASH_SECRETS)
-    }).then(()=>{
-        res.send({"status":"success"});
+    getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key)=>{
+        return submitEncryptTx(req.body.address, key)
+    }).then((ref)=>{
+        res.send({txId: ref.id});
     }).catch((e)=>{
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
+
+exports.publishEncryption = functions.firestore
+    .document(COLLECTION_ENCRYPTION_TX+'/{id}')
+    .onCreate(event => {
+        initRevealer();
+        let data = event.data.data();
+        return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {from: revealerProvider.getAddress()}).then((tx)=>{
+            return event.data.ref.set({
+                tx: tx.tx,
+                status: "complete"
+            }, {merge: true});
+        }).then(()=>{
+            return removeHashKey(data.address, COLLECTION_HASH_SECRETS)
+        }).catch((e)=>{
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
+            }, {merge: true});
+        });
+    });
+
 exports.admin = functions.https.onRequest(adminApp);
 
 // VOTER APIs
@@ -398,6 +427,12 @@ exports.castVote = functions.firestore
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
+            }, {merge: true});
+        }).catch((e)=>{
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
             }, {merge: true});
         });
     });
