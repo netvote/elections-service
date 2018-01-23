@@ -5,6 +5,10 @@ const cookieParser = require('cookie-parser');
 const express = require('express');
 const cors = require('cors');
 
+Array.prototype.pushArray = function(arr) {
+    this.push.apply(this, arr);
+};
+
 let crypto;
 let nJwt;
 
@@ -46,6 +50,13 @@ let GatewayElection;
 let gatewayProvider;
 let gatewayWeb3;
 
+let ipfs;
+
+const initIpfs = () => {
+    let IPFS = require('ipfs-mini');
+    ipfs = new IPFS({ host: 'gateway.ipfs.io', port: 443, protocol: 'https' });
+}
+
 const initUuid = () => {
     if(!uuid) {
         uuid = require('uuid/v4');
@@ -70,7 +81,7 @@ const initEth = () => {
         contract = require('truffle-contract');
         Web3 = require("web3");
     }
-}
+};
 
 const initGateway = () => {
     if(!GatewayElection){
@@ -159,6 +170,75 @@ const validateFirebaseIdToken = (req, res, next) => {
         unauthorized(res);
     });
 };
+
+const ipfsLookup = (metadataLocation) => {
+    return new Promise((resolve, reject) => {
+        ipfs.catJSON(metadataLocation, (err, metadata) => {
+            if(err){
+                console.error(err);
+                reject(err);
+            }
+            let decisions = [];
+            metadata.ballotGroups.forEach((bg)=>{
+                decisions.pushArray(bg.ballotSections);
+            });
+            resolve({
+                decisions: decisions
+            });
+        });
+    })
+};
+
+const voteProto = () => {
+    let protobuf = require("protobufjs");
+    return new Promise((resolve, reject) => {
+        let root = protobuf.load("./node_modules/@netvote/elections-solidity/protocol/vote.proto").then((rt)=>{
+            return rt.lookupType("netvote.Vote");
+        }).then((tp) => {
+            resolve(tp);
+        })
+    });
+};
+
+const validateVote = (voteBuff, address) => {
+    initIpfs();
+
+    let VoteProto;
+    let metaLocation;
+    return GatewayElection.at(address).metadataLocation().then((location) => {
+        metaLocation = location;
+        return voteProto();
+    }).then((vp)=>{
+        VoteProto = vp;
+        return ipfsLookup(metaLocation)
+    }).then((metadata)=> {
+        let vote = VoteProto.decode(voteBuff);
+        return new Promise((resolve, reject) => {
+            //TODO: support multiple ballots
+            if(vote.ballotVotes.length !== 1){
+                reject("vote must have 1 ballotVotes entry, actual="+vote.ballotVotes.length)
+            }
+
+            if(vote.ballotVotes[0].choices.length !== metadata.decisions.length){
+                reject("vote should have "+metadata.decisions.length+" choices but had "+vote.ballotVotes[0].choices.length);
+            }
+
+            vote.ballotVotes[0].choices.forEach((c, idx)=>{
+                if(!c.writeIn){
+                    if(c.selection < 0){
+                        reject("vote cannot have a selection less than 0")
+                    }
+                    if(c.selection > (metadata.decisions[idx].ballotItems.length-1)){
+                        reject("vote must be between 0 and "+(metadata.decisions[idx].ballotItems.length-1))
+                    }
+                }
+            });
+            resolve(true);
+        })
+    })
+};
+
+
 
 const electionOwnerCheck = (req, res, next) => {
     uidOwnsElection(req.user.uid, req.body.address).then((match)=>{
@@ -398,21 +478,27 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     initCrypto();
     let encodedVote = req.body.vote;
     let vote = Buffer.from(encodedVote, 'base64');
+
+
     if(!vote){
         sendError(res, 400, "vote is required");
     } else {
-        let voteId = "";
-        getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret)=> {
-            const voteIdHmac = toHmac(req.election+":"+req.voter, secret);
-            voteId = gatewayWeb3.sha3(voteIdHmac);
-            return encrypt(vote, req.election);
-        }).then((encryptedVote)=>{
-            return submitVoteTx(req.election, voteId, encryptedVote);
-        }).then((jobRef)=>{
-            res.send({txId: jobRef.id});
-        }).catch((e) => {
-            console.error(e);
-            sendError(res, 500, e.message)
+        validateVote(vote, req.election).then((valid)=>{
+            let voteId = "";
+            getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret)=> {
+                const voteIdHmac = toHmac(req.election+":"+req.voter, secret);
+                voteId = gatewayWeb3.sha3(voteIdHmac);
+                return encrypt(vote, req.election);
+            }).then((encryptedVote)=>{
+                return submitVoteTx(req.election, voteId, encryptedVote);
+            }).then((jobRef)=>{
+                res.send({txId: jobRef.id});
+            }).catch((e) => {
+                console.error(e);
+                sendError(res, 500, e.message)
+            });
+        }).catch((errorText)=>{
+            sendError(res, 400, errorText);
         });
     }
 });
