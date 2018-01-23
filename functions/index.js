@@ -212,8 +212,13 @@ const validateVote = (voteBuff, address) => {
         VoteProto = vp;
         return ipfsLookup(metaLocation)
     }).then((metadata)=> {
-        let vote = VoteProto.decode(voteBuff);
         return new Promise((resolve, reject) => {
+            let vote;
+            try {
+                vote = VoteProto.decode(voteBuff);
+            }catch(e){
+                reject("invalid vote structure")
+            }
             //TODO: support multiple ballots
             if(vote.ballotVotes.length !== 1){
                 reject("vote must have 1 ballotVotes entry, actual="+vote.ballotVotes.length)
@@ -477,9 +482,13 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     initGateway();
     initCrypto();
     let encodedVote = req.body.vote;
-    let vote = Buffer.from(encodedVote, 'base64');
-
-
+    let vote;
+    try {
+        vote = Buffer.from(encodedVote, 'base64');
+    }catch(e){
+        sendError(res, 400, 'must be valid base64 encoding');
+        return;
+    }
     if(!vote){
         sendError(res, 400, "vote is required");
     } else {
