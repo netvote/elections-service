@@ -5,7 +5,7 @@ const cookieParser = require('cookie-parser');
 const express = require('express');
 const cors = require('cors');
 
-Array.prototype.pushArray = function(arr) {
+Array.prototype.pushArray = function (arr) {
     this.push.apply(this, arr);
 };
 
@@ -17,6 +17,7 @@ const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
 const COLLECTION_VOTE_TX = "voteTransaction";
 const COLLECTION_ENCRYPTION_TX = "postEncryptionTx";
+const COLLECTION_CREATE_ELECTION_TX = "createElectionTX";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -54,29 +55,29 @@ let ipfs;
 
 const initIpfs = () => {
     let IPFS = require('ipfs-mini');
-    ipfs = new IPFS({ host: 'gateway.ipfs.io', port: 443, protocol: 'https' });
+    ipfs = new IPFS({host: 'gateway.ipfs.io', port: 443, protocol: 'https'});
 }
 
 const initUuid = () => {
-    if(!uuid) {
+    if (!uuid) {
         uuid = require('uuid/v4');
     }
 };
 
 const initJwt = () => {
-    if(!nJwt) {
+    if (!nJwt) {
         nJwt = require('njwt');
     }
 };
 
 const initCrypto = () => {
-    if(!crypto){
+    if (!crypto) {
         crypto = require('crypto');
     }
 };
 
 const initEth = () => {
-    if(!HDWalletProvider) {
+    if (!HDWalletProvider) {
         HDWalletProvider = require("truffle-hdwallet-provider");
         contract = require('truffle-contract');
         Web3 = require("web3");
@@ -84,7 +85,7 @@ const initEth = () => {
 };
 
 const initGateway = () => {
-    if(!GatewayElection){
+    if (!GatewayElection) {
         initEth();
         GatewayElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
         gatewayProvider = new HDWalletProvider(mnemonic, apiUrl);
@@ -101,7 +102,7 @@ const initGateway = () => {
 };
 
 const initRevealer = () => {
-    if(!KeyRevealerElection){
+    if (!KeyRevealerElection) {
         initEth();
         KeyRevealerElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
         revealerProvider = new HDWalletProvider(mnemonic, apiUrl);
@@ -119,7 +120,7 @@ const initRevealer = () => {
 
 
 const sendError = (res, code, txt) => {
-    res.status(code).send({"status":"error", "text": txt});
+    res.status(code).send({"status": "error", "text": txt});
 };
 
 const unauthorized = (res) => {
@@ -174,12 +175,12 @@ const validateFirebaseIdToken = (req, res, next) => {
 const ipfsLookup = (metadataLocation) => {
     return new Promise((resolve, reject) => {
         ipfs.catJSON(metadataLocation, (err, metadata) => {
-            if(err){
+            if (err) {
                 console.error(err);
                 reject(err);
             }
             let decisions = [];
-            metadata.ballotGroups.forEach((bg)=>{
+            metadata.ballotGroups.forEach((bg) => {
                 decisions.pushArray(bg.ballotSections);
             });
             resolve({
@@ -192,7 +193,7 @@ const ipfsLookup = (metadataLocation) => {
 const voteProto = () => {
     let protobuf = require("protobufjs");
     return new Promise((resolve, reject) => {
-        let root = protobuf.load("./node_modules/@netvote/elections-solidity/protocol/vote.proto").then((rt)=>{
+        let root = protobuf.load("./node_modules/@netvote/elections-solidity/protocol/vote.proto").then((rt) => {
             return rt.lookupType("netvote.Vote");
         }).then((tp) => {
             resolve(tp);
@@ -208,33 +209,33 @@ const validateVote = (voteBuff, address) => {
     return GatewayElection.at(address).metadataLocation().then((location) => {
         metaLocation = location;
         return voteProto();
-    }).then((vp)=>{
+    }).then((vp) => {
         VoteProto = vp;
         return ipfsLookup(metaLocation)
-    }).then((metadata)=> {
+    }).then((metadata) => {
         return new Promise((resolve, reject) => {
             let vote;
             try {
                 vote = VoteProto.decode(voteBuff);
-            }catch(e){
+            } catch (e) {
                 reject("invalid vote structure")
             }
             //TODO: support multiple ballots
-            if(vote.ballotVotes.length !== 1){
-                reject("vote must have 1 ballotVotes entry, actual="+vote.ballotVotes.length)
+            if (vote.ballotVotes.length !== 1) {
+                reject("vote must have 1 ballotVotes entry, actual=" + vote.ballotVotes.length)
             }
 
-            if(vote.ballotVotes[0].choices.length !== metadata.decisions.length){
-                reject("vote should have "+metadata.decisions.length+" choices but had "+vote.ballotVotes[0].choices.length);
+            if (vote.ballotVotes[0].choices.length !== metadata.decisions.length) {
+                reject("vote should have " + metadata.decisions.length + " choices but had " + vote.ballotVotes[0].choices.length);
             }
 
-            vote.ballotVotes[0].choices.forEach((c, idx)=>{
-                if(!c.writeIn){
-                    if(c.selection < 0){
+            vote.ballotVotes[0].choices.forEach((c, idx) => {
+                if (!c.writeIn) {
+                    if (c.selection < 0) {
                         reject("vote cannot have a selection less than 0")
                     }
-                    if(c.selection > (metadata.decisions[idx].ballotItems.length-1)){
-                        reject("vote must be between 0 and "+(metadata.decisions[idx].ballotItems.length-1))
+                    if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
+                        reject("vote must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1))
                     }
                 }
             });
@@ -244,14 +245,13 @@ const validateVote = (voteBuff, address) => {
 };
 
 
-
 const electionOwnerCheck = (req, res, next) => {
-    uidOwnsElection(req.user.uid, req.body.address).then((match)=>{
-        if(match){
+    uidOwnsElection(req.user.uid, req.body.address).then((match) => {
+        if (match) {
             return next();
         }
         forbidden(res);
-    }).catch((e)=>{
+    }).catch((e) => {
         console.error(e);
         forbidden(res);
     });
@@ -263,11 +263,12 @@ const removeHashKey = (electionId, collection) => {
     return db.collection(collection).doc(electionHmac).delete();
 };
 
-const submitEncryptTx = (address, key) => {
+const submitEncryptTx = (address, key, deleteHash) => {
     let db = admin.firestore();
     return db.collection(COLLECTION_ENCRYPTION_TX).add({
         address: address,
-        key: key
+        key: key,
+        deleteHash: deleteHash
     });
 };
 
@@ -280,15 +281,26 @@ const submitVoteTx = (address, voteId, encryptedVote) => {
     });
 };
 
+const submitCreateElectionTx = (allowUpdates, isPublic, metadataLocation, autoActivate, uid) => {
+    let db = admin.firestore();
+    return db.collection(COLLECTION_CREATE_ELECTION_TX).add({
+        allowUpdates: allowUpdates,
+        isPublic: isPublic,
+        metadataLocation: metadataLocation,
+        autoActivate: autoActivate,
+        uid: uid
+    });
+};
+
 const getHashKey = (electionId, collection) => {
     initUuid();
     return new Promise(function (resolve, reject) {
         let db = admin.firestore();
         const electionHmac = toHmac(electionId, storageHashSecret);
-        db.collection(collection).doc(electionHmac).get().then((doc)=>{
-            if(doc.exists){
+        db.collection(collection).doc(electionHmac).get().then((doc) => {
+            if (doc.exists) {
                 resolve(doc.data().secret);
-            }else{
+            } else {
                 const secret = uuid();
                 db.collection(collection).doc(electionHmac).set({
                     secret: secret
@@ -314,10 +326,10 @@ const generateKeys = (uid, electionId, count) => {
                 let ref = db.collection(COLLECTION_VOTER_IDS).doc(hmacHex);
                 batch.set(ref, {createdBy: uid, pool: electionId});
             }
-            batch.commit().then(()=>{
+            batch.commit().then(() => {
                 resolve(keys);
             });
-        }catch(e){
+        } catch (e) {
             reject(e);
         }
     });
@@ -352,22 +364,22 @@ const voterIdCheck = (req, res, next) => {
     let address = req.body.address;
     let hmac = calculateRegKey(address, key);
     let db = admin.firestore();
-    db.collection(COLLECTION_VOTER_IDS).doc(hmac).get().then((doc)=>{
-        if(doc.exists && doc.data().pool === address){
+    db.collection(COLLECTION_VOTER_IDS).doc(hmac).get().then((doc) => {
+        if (doc.exists && doc.data().pool === address) {
             return next();
         }
         unauthorized(res);
-    }).catch((e)=>{
+    }).catch((e) => {
         sendError(res, 500, e.message);
     });
 };
 
 const voterTokenCheck = (req, res, next) => {
     initJwt();
-    nJwt.verify(req.token, voteTokenSecret,function(err,verifiedJwt){
-        if(err){
+    nJwt.verify(req.token, voteTokenSecret, function (err, verifiedJwt) {
+        if (err) {
             unauthorized(res);
-        }else{
+        } else {
             req.voter = verifiedJwt.body.sub;
             req.election = verifiedJwt.body.scope;
             next();
@@ -379,11 +391,11 @@ const createVoterJwt = (electionId, voterId) => {
     initJwt();
     let claims = {
         iss: "https://netvote.io/",
-        sub: hmacVoterId(electionId+":"+voterId),
+        sub: hmacVoterId(electionId + ":" + voterId),
         scope: electionId
     };
-    let jwt = nJwt.create(claims,voteTokenSecret);
-    jwt.setExpiration(new Date().getTime() + (60*60*1000));
+    let jwt = nJwt.create(claims, voteTokenSecret);
+    jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
     return jwt.compact();
 };
 
@@ -405,60 +417,125 @@ const adminApp = express();
 adminApp.use(cors());
 adminApp.use(cookieParser());
 adminApp.use(validateFirebaseIdToken);
-adminApp.use(electionOwnerCheck);
-adminApp.post('/keys', (req, res) => {
-    if(!req.body.address || !req.body.count){
+adminApp.post('/keys', electionOwnerCheck, (req, res) => {
+    if (!req.body.address || !req.body.count) {
         sendError(res, 400, "count & address are required");
         return;
     }
     generateKeys(req.user.uid, req.body.address, req.body.count).then((keys) => {
         res.send(keys);
-    }).catch((e)=>{
+    }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
-adminApp.post('/hashsecret', (req, res) => {
-    if(!req.body.address){
+adminApp.post('/hashsecret', electionOwnerCheck, (req, res) => {
+    if (!req.body.address) {
         sendError(res, 400, "address is required");
         return;
     }
-    getHashKey(req.body.address, COLLECTION_HASH_SECRETS).then((s)=>{
-        res.send({"status":"ok"});
-    }).catch((e)=>{
+    getHashKey(req.body.address, COLLECTION_HASH_SECRETS).then((s) => {
+        res.send({"status": "ok"});
+    }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
-adminApp.post('/encryption', (req, res) => {
-    initRevealer();
-    if(!req.body.address){
+adminApp.post('/encryption', electionOwnerCheck, (req, res) => {
+    if (!req.body.address) {
         sendError(res, 400, "address is required");
         return;
     }
-    getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key)=>{
-        return submitEncryptTx(req.body.address, key)
-    }).then((ref)=>{
+    getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) => {
+        return submitEncryptTx(req.body.address, key, true)
+    }).then((ref) => {
         res.send({txId: ref.id});
-    }).catch((e)=>{
+    }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
 
+adminApp.post('/election', (req, res) => {
+    let isPublic = !!(req.body.isPublic);
+    let metadataLocation = req.body.metadataLocation;
+    let allowUpdates = !!(req.body.allowUpdates);
+    let autoActivate = !!(req.body.autoActivate);
+
+    if (!metadataLocation) {
+        sendError(res, 400, "metadataLocation is required");
+        return;
+    }
+
+    let uid = req.user.uid;
+
+    return submitCreateElectionTx(allowUpdates, isPublic, metadataLocation, autoActivate, uid).then((ref) => {
+        res.send({txId: ref.id});
+    }).catch((e) => {
+        console.error(e);
+        sendError(res, 500, e.message);
+    });
+});
+
+exports.createElection = functions.firestore
+    .document(COLLECTION_CREATE_ELECTION_TX + '/{id}')
+    .onCreate(event => {
+        initGateway();
+        let data = event.data.data();
+
+        let gatewayAddress = gatewayProvider.getAddress();
+        let addr = "";
+        let tx = "";
+
+        return GatewayElection.new(
+            data.uid,
+            ALLOWANCE_ADDRESS,
+            gatewayAddress,
+            data.allowUpdates,
+            gatewayAddress,
+            data.metadataLocation,
+            gatewayAddress,
+            data.autoActivate,
+            {from: gatewayAddress}).then((el) => {
+                addr = el.address;
+                tx = el.transactionHash+"";
+        }).then(()=>{
+            // add key if should add key
+            if (data.isPublic) {
+                return getHashKey(addr, COLLECTION_ENCRYPTION_KEYS).then((key) => {
+                    return submitEncryptTx(addr, key, false);
+                })
+            } else {
+                return null;
+            }
+        }).then(()=>{
+            return event.data.ref.set({
+                tx: tx,
+                status: "complete",
+                address: addr
+            }, {merge: true});
+        }).catch((e) => {
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
+            }, {merge: true});
+        });
+    });
+
 exports.publishEncryption = functions.firestore
-    .document(COLLECTION_ENCRYPTION_TX+'/{id}')
+    .document(COLLECTION_ENCRYPTION_TX + '/{id}')
     .onCreate(event => {
         initRevealer();
         let data = event.data.data();
-        return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {from: revealerProvider.getAddress()}).then((tx)=>{
+        return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {from: revealerProvider.getAddress()}).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
             }, {merge: true});
-        }).then(()=>{
-            return removeHashKey(data.address, COLLECTION_HASH_SECRETS)
-        }).catch((e)=>{
+        }).then(() => {
+            return (data.deleteHash) ? removeHashKey(data.address, COLLECTION_HASH_SECRETS) : null
+        }).catch((e) => {
             console.error(e);
             return event.data.ref.set({
                 status: "error",
@@ -485,45 +562,45 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     let vote;
     try {
         vote = Buffer.from(encodedVote, 'base64');
-    }catch(e){
+    } catch (e) {
         sendError(res, 400, 'must be valid base64 encoding');
         return;
     }
-    if(!vote){
+    if (!vote) {
         sendError(res, 400, "vote is required");
     } else {
-        validateVote(vote, req.election).then((valid)=>{
+        validateVote(vote, req.election).then((valid) => {
             let voteId = "";
-            getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret)=> {
-                const voteIdHmac = toHmac(req.election+":"+req.voter, secret);
+            getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret) => {
+                const voteIdHmac = toHmac(req.election + ":" + req.voter, secret);
                 voteId = gatewayWeb3.sha3(voteIdHmac);
                 return encrypt(vote, req.election);
-            }).then((encryptedVote)=>{
+            }).then((encryptedVote) => {
                 return submitVoteTx(req.election, voteId, encryptedVote);
-            }).then((jobRef)=>{
+            }).then((jobRef) => {
                 res.send({txId: jobRef.id});
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message)
             });
-        }).catch((errorText)=>{
+        }).catch((errorText) => {
             sendError(res, 400, errorText);
         });
     }
 });
 
 exports.castVote = functions.firestore
-    .document(COLLECTION_VOTE_TX+'/{id}')
+    .document(COLLECTION_VOTE_TX + '/{id}')
     .onCreate(event => {
         initGateway();
         let voteObj = event.data.data();
-        console.log("sending tx from "+gatewayProvider.getAddress()+": "+JSON.stringify(voteObj));
-        return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx)=>{
+        console.log("sending tx from " + gatewayProvider.getAddress() + ": " + JSON.stringify(voteObj));
+        return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
             }, {merge: true});
-        }).catch((e)=>{
+        }).catch((e) => {
             console.error(e);
             return event.data.ref.set({
                 status: "error",
