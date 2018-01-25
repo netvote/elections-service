@@ -25,7 +25,27 @@ service cloud.firestore {
         allow read, write: if true;
     }
 
-    match /voteTransaction/{id} {
+    match /transactionCastVote/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
+    match /transactionCreateElection/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
+    match /transactionPublishKey/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
+    match /transactionActivateElection/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
+    match /transactionCloseElection/{id} {
         allow read: if true;
         allow write: if false;
     }

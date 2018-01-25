@@ -12,12 +12,17 @@ Array.prototype.pushArray = function (arr) {
 let crypto;
 let nJwt;
 
+const ALLOWANCE_ADDRESS = "0xdd7bd7cc567c025ac49d7892ec9c33a0ca298ca6";
+
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
-const COLLECTION_VOTE_TX = "voteTransaction";
-const COLLECTION_ENCRYPTION_TX = "postEncryptionTx";
-const COLLECTION_CREATE_ELECTION_TX = "createElectionTX";
+const COLLECTION_VOTE_TX = "transactionCastVote";
+const COLLECTION_UPDATE_VOTE_TX = "transactionUpdateVote";
+const COLLECTION_ENCRYPTION_TX = "transactionPublishKey";
+const COLLECTION_CREATE_ELECTION_TX = "transactionCreateElection";
+const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
+const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -56,7 +61,7 @@ let ipfs;
 const initIpfs = () => {
     let IPFS = require('ipfs-mini');
     ipfs = new IPFS({host: 'gateway.ipfs.io', port: 443, protocol: 'https'});
-}
+};
 
 const initUuid = () => {
     if (!uuid) {
@@ -264,8 +269,7 @@ const removeHashKey = (electionId, collection) => {
 };
 
 const submitEncryptTx = (address, key, deleteHash) => {
-    let db = admin.firestore();
-    return db.collection(COLLECTION_ENCRYPTION_TX).add({
+    return submitEthTransaction(COLLECTION_ENCRYPTION_TX, {
         address: address,
         key: key,
         deleteHash: deleteHash
@@ -273,8 +277,15 @@ const submitEncryptTx = (address, key, deleteHash) => {
 };
 
 const submitVoteTx = (address, voteId, encryptedVote) => {
-    let db = admin.firestore();
-    return db.collection(COLLECTION_VOTE_TX).add({
+    return submitEthTransaction(COLLECTION_VOTE_TX, {
+        address: address,
+        voteId: voteId,
+        encryptedVote: encryptedVote
+    });
+};
+
+const submitUpdateVoteTx = (address, voteId, encryptedVote) => {
+    return submitEthTransaction(COLLECTION_UPDATE_VOTE_TX, {
         address: address,
         voteId: voteId,
         encryptedVote: encryptedVote
@@ -282,14 +293,18 @@ const submitVoteTx = (address, voteId, encryptedVote) => {
 };
 
 const submitCreateElectionTx = (allowUpdates, isPublic, metadataLocation, autoActivate, uid) => {
-    let db = admin.firestore();
-    return db.collection(COLLECTION_CREATE_ELECTION_TX).add({
+    return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
         allowUpdates: allowUpdates,
         isPublic: isPublic,
         metadataLocation: metadataLocation,
         autoActivate: autoActivate,
         uid: uid
     });
+};
+
+const submitEthTransaction = (collection, obj) => {
+    let db = admin.firestore();
+    return db.collection(collection).add(obj);
 };
 
 const getHashKey = (electionId, collection) => {
@@ -411,6 +426,10 @@ const encrypt = (text, electionId) => {
     });
 };
 
+const updatesAreAllowed = (address) => {
+    initGateway();
+    return GatewayElection.at(address).allowVoteUpdates()
+};
 
 // ADMIN APIs
 const adminApp = express();
@@ -429,18 +448,7 @@ adminApp.post('/keys', electionOwnerCheck, (req, res) => {
         sendError(res, 500, e.message);
     });
 });
-adminApp.post('/hashsecret', electionOwnerCheck, (req, res) => {
-    if (!req.body.address) {
-        sendError(res, 400, "address is required");
-        return;
-    }
-    getHashKey(req.body.address, COLLECTION_HASH_SECRETS).then((s) => {
-        res.send({"status": "ok"});
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
-    });
-});
+
 adminApp.post('/encryption', electionOwnerCheck, (req, res) => {
     if (!req.body.address) {
         sendError(res, 400, "address is required");
@@ -449,7 +457,39 @@ adminApp.post('/encryption', electionOwnerCheck, (req, res) => {
     getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) => {
         return submitEncryptTx(req.body.address, key, true)
     }).then((ref) => {
-        res.send({txId: ref.id});
+        res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
+    }).catch((e) => {
+        console.error(e);
+        sendError(res, 500, e.message);
+    });
+});
+
+adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
+    if (!req.body.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+
+    return submitEthTransaction(COLLECTION_ACTIVATE_ELECTION_TX,{
+        address: req.body.address
+    }).then((ref) => {
+        res.send({txId: ref.id, collection: COLLECTION_ACTIVATE_ELECTION_TX});
+    }).catch((e) => {
+        console.error(e);
+        sendError(res, 500, e.message);
+    });
+});
+
+adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
+    if (!req.body.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+
+    return submitEthTransaction(COLLECTION_CLOSE_ELECTION_TX,{
+        address: req.body.address
+    }).then((ref) => {
+        res.send({txId: ref.id, collection: COLLECTION_CLOSE_ELECTION_TX});
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -467,15 +507,57 @@ adminApp.post('/election', (req, res) => {
         return;
     }
 
-    let uid = req.user.uid;
-
-    return submitCreateElectionTx(allowUpdates, isPublic, metadataLocation, autoActivate, uid).then((ref) => {
-        res.send({txId: ref.id});
+    return submitCreateElectionTx(allowUpdates, isPublic, metadataLocation, autoActivate, req.user.uid).then((ref) => {
+        res.send({txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX});
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
+
+exports.activateElection = functions.firestore
+    .document(COLLECTION_ACTIVATE_ELECTION_TX + '/{id}')
+    .onCreate(event => {
+        initGateway();
+        let data = event.data.data();
+
+        return GatewayElection.at(data.address).activate({from: gatewayProvider.getAddress()}).then((tx) => {
+            return event.data.ref.set({
+                tx: tx.tx,
+                status: "complete"
+            }, {merge: true});
+        }).catch((e) => {
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
+            }, {merge: true});
+        });
+    });
+
+exports.closeElection = functions.firestore
+    .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
+    .onCreate(event => {
+        initGateway();
+        let data = event.data.data();
+
+        return GatewayElection.at(data.address).close({from: gatewayProvider.getAddress()}).then((tx) => {
+            return event.data.ref.set({
+                tx: tx.tx,
+                status: "complete"
+            }, {merge: true});
+        }).then(()=>{
+            getHashKey(data.address, COLLECTION_ENCRYPTION_KEYS)
+        }).then((key)=>{
+            return submitEncryptTx(data.address, key, true)
+        }).catch((e) => {
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
+            }, {merge: true});
+        });
+    });
 
 exports.createElection = functions.firestore
     .document(COLLECTION_CREATE_ELECTION_TX + '/{id}')
@@ -499,6 +581,9 @@ exports.createElection = functions.firestore
             {from: gatewayAddress}).then((el) => {
                 addr = el.address;
                 tx = el.transactionHash+"";
+        }).then(()=>{
+            // generate hash key for voters
+            return getHashKey(addr, COLLECTION_HASH_SECRETS);
         }).then(()=>{
             // add key if should add key
             if (data.isPublic) {
@@ -589,12 +674,52 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     }
 });
 
+voterApp.post('/update', voterTokenCheck, (req, res) => {
+    initGateway();
+    initCrypto();
+    let encodedVote = req.body.vote;
+    let vote;
+    try {
+        vote = Buffer.from(encodedVote, 'base64');
+    } catch (e) {
+        sendError(res, 400, 'must be valid base64 encoding');
+        return;
+    }
+    if (!vote) {
+        sendError(res, 400, "vote is required");
+    } else {
+        updatesAreAllowed(req.election).then((allowed)=>{
+            if(allowed) {
+                validateVote(vote, req.election).then((valid) => {
+                    let voteId = "";
+                    getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret) => {
+                        const voteIdHmac = toHmac(req.election + ":" + req.voter, secret);
+                        voteId = gatewayWeb3.sha3(voteIdHmac);
+                        return encrypt(vote, req.election);
+                    }).then((encryptedVote) => {
+                        return submitUpdateVoteTx(req.election, voteId, encryptedVote);
+                    }).then((jobRef) => {
+                        res.send({txId: jobRef.id});
+                    }).catch((e) => {
+                        console.error(e);
+                        sendError(res, 500, e.message)
+                    });
+                }).catch((errorText) => {
+                    sendError(res, 400, errorText);
+                });
+            }else{
+                sendError(res, 403, "This election may not update votes");
+            }
+        })
+    }
+});
+
+
 exports.castVote = functions.firestore
     .document(COLLECTION_VOTE_TX + '/{id}')
     .onCreate(event => {
         initGateway();
         let voteObj = event.data.data();
-        console.log("sending tx from " + gatewayProvider.getAddress() + ": " + JSON.stringify(voteObj));
         return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -608,5 +733,25 @@ exports.castVote = functions.firestore
             }, {merge: true});
         });
     });
+
+exports.updateVote = functions.firestore
+    .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
+    .onCreate(event => {
+        initGateway();
+        let voteObj = event.data.data();
+        return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx) => {
+            return event.data.ref.set({
+                tx: tx.tx,
+                status: "complete"
+            }, {merge: true});
+        }).catch((e) => {
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
+            }, {merge: true});
+        });
+    });
+
 
 exports.vote = functions.https.onRequest(voterApp);
