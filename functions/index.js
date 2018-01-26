@@ -431,33 +431,34 @@ const updatesAreAllowed = (address) => {
     return GatewayElection.at(address).allowVoteUpdates()
 };
 
+const gatewayNonce = () => {
+    return new Promise(function (resolve, reject) {
+        gatewayWeb3.eth.getTransactionCount(gatewayProvider.getAddress(), (err, res) => {
+            resolve(res);
+        });
+    });
+}
+
+const revealerNonce = () => {
+    return new Promise(function (resolve, reject) {
+        revealerWeb3.eth.getTransactionCount(revealerProvider.getAddress(), (err, res) => {
+            resolve(res);
+        });
+    });
+}
+
 // ADMIN APIs
 const adminApp = express();
 adminApp.use(cors());
 adminApp.use(cookieParser());
 adminApp.use(validateFirebaseIdToken);
-adminApp.post('/keys', electionOwnerCheck, (req, res) => {
+adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
     if (!req.body.address || !req.body.count) {
         sendError(res, 400, "count & address are required");
         return;
     }
     generateKeys(req.user.uid, req.body.address, req.body.count).then((keys) => {
         res.send(keys);
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
-    });
-});
-
-adminApp.post('/encryption', electionOwnerCheck, (req, res) => {
-    if (!req.body.address) {
-        sendError(res, 400, "address is required");
-        return;
-    }
-    getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) => {
-        return submitEncryptTx(req.body.address, key, true)
-    }).then((ref) => {
-        res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -515,17 +516,22 @@ adminApp.post('/election', (req, res) => {
     });
 });
 
-exports.activateElection = functions.firestore
-    .document(COLLECTION_ACTIVATE_ELECTION_TX + '/{id}')
+exports.electionClose = functions.firestore
+    .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
     .onCreate(event => {
         initGateway();
         let data = event.data.data();
-
-        return GatewayElection.at(data.address).activate({from: gatewayProvider.getAddress()}).then((tx) => {
+        return gatewayNonce().then((nonce)=>{
+            return GatewayElection.at(data.address).close({nonce: nonce, from: gatewayProvider.getAddress()})
+        }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
             }, {merge: true});
+        }).then(()=>{
+            return getHashKey(data.address, COLLECTION_ENCRYPTION_KEYS)
+        }).then((key)=>{
+            return submitEncryptTx(data.address, key, true)
         }).catch((e) => {
             console.error(e);
             return event.data.ref.set({
@@ -535,21 +541,19 @@ exports.activateElection = functions.firestore
         });
     });
 
-exports.closeElection = functions.firestore
-    .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
+exports.electionActivate = functions.firestore
+    .document(COLLECTION_ACTIVATE_ELECTION_TX + '/{id}')
     .onCreate(event => {
         initGateway();
         let data = event.data.data();
 
-        return GatewayElection.at(data.address).close({from: gatewayProvider.getAddress()}).then((tx) => {
+        return gatewayNonce().then((nonce)=>{
+            return GatewayElection.at(data.address).activate({nonce: nonce, from: gatewayProvider.getAddress()})
+        }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
             }, {merge: true});
-        }).then(()=>{
-            getHashKey(data.address, COLLECTION_ENCRYPTION_KEYS)
-        }).then((key)=>{
-            return submitEncryptTx(data.address, key, true)
         }).catch((e) => {
             console.error(e);
             return event.data.ref.set({
@@ -568,17 +572,18 @@ exports.createElection = functions.firestore
         let gatewayAddress = gatewayProvider.getAddress();
         let addr = "";
         let tx = "";
-
-        return GatewayElection.new(
-            data.uid,
-            ALLOWANCE_ADDRESS,
-            gatewayAddress,
-            data.allowUpdates,
-            gatewayAddress,
-            data.metadataLocation,
-            gatewayAddress,
-            data.autoActivate,
-            {from: gatewayAddress}).then((el) => {
+        return gatewayNonce().then((nonce)=>{
+            return GatewayElection.new(
+                data.uid,
+                ALLOWANCE_ADDRESS,
+                gatewayAddress,
+                data.allowUpdates,
+                gatewayAddress,
+                data.metadataLocation,
+                gatewayAddress,
+                data.autoActivate,
+                {nonce: nonce, from: gatewayAddress})
+        }).then((el) => {
                 addr = el.address;
                 tx = el.transactionHash+"";
         }).then(()=>{
@@ -613,7 +618,9 @@ exports.publishEncryption = functions.firestore
     .onCreate(event => {
         initRevealer();
         let data = event.data.data();
-        return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {from: revealerProvider.getAddress()}).then((tx) => {
+        return revealerNonce().then((nonce)=>{
+            return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {nonce: nonce, from: revealerProvider.getAddress()})
+        }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
@@ -663,7 +670,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
             }).then((encryptedVote) => {
                 return submitVoteTx(req.election, voteId, encryptedVote);
             }).then((jobRef) => {
-                res.send({txId: jobRef.id});
+                res.send({txId: jobRef.id, collection: COLLECTION_VOTE_TX});
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message)
@@ -699,7 +706,7 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
                     }).then((encryptedVote) => {
                         return submitUpdateVoteTx(req.election, voteId, encryptedVote);
                     }).then((jobRef) => {
-                        res.send({txId: jobRef.id});
+                        res.send({txId: jobRef.id, collection: COLLECTION_UPDATE_VOTE_TX});
                     }).catch((e) => {
                         console.error(e);
                         sendError(res, 500, e.message)
@@ -714,13 +721,14 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
     }
 });
 
-
 exports.castVote = functions.firestore
     .document(COLLECTION_VOTE_TX + '/{id}')
     .onCreate(event => {
         initGateway();
         let voteObj = event.data.data();
-        return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx) => {
+        return gatewayNonce().then((nonce)=>{
+            return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {nonce: nonce, from: gatewayProvider.getAddress()})
+        }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
@@ -739,7 +747,9 @@ exports.updateVote = functions.firestore
     .onCreate(event => {
         initGateway();
         let voteObj = event.data.data();
-        return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, {from: gatewayProvider.getAddress()}).then((tx) => {
+        return gatewayNonce().then((nonce)=>{
+            return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, {nonce: nonce, from: gatewayProvider.getAddress()})
+        }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
