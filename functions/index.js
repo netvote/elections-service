@@ -276,19 +276,21 @@ const submitEncryptTx = (address, key, deleteHash) => {
     });
 };
 
-const submitVoteTx = (address, voteId, encryptedVote) => {
+const submitVoteTx = (address, voteId, encryptedVote, passphrase) => {
     return submitEthTransaction(COLLECTION_VOTE_TX, {
         address: address,
         voteId: voteId,
-        encryptedVote: encryptedVote
+        encryptedVote: encryptedVote,
+        passphrase: passphrase
     });
 };
 
-const submitUpdateVoteTx = (address, voteId, encryptedVote) => {
+const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase) => {
     return submitEthTransaction(COLLECTION_UPDATE_VOTE_TX, {
         address: address,
         voteId: voteId,
-        encryptedVote: encryptedVote
+        encryptedVote: encryptedVote,
+        passphrase: passphrase
     });
 };
 
@@ -668,7 +670,8 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 voteId = gatewayWeb3.sha3(voteIdHmac);
                 return encrypt(vote, req.election);
             }).then((encryptedVote) => {
-                return submitVoteTx(req.election, voteId, encryptedVote);
+                const passphrase = req.body.passphrase ? req.body.passphrase : "none";
+                return submitVoteTx(req.election, voteId, encryptedVote, passphrase);
             }).then((jobRef) => {
                 res.send({txId: jobRef.id, collection: COLLECTION_VOTE_TX});
             }).catch((e) => {
@@ -704,7 +707,8 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
                         voteId = gatewayWeb3.sha3(voteIdHmac);
                         return encrypt(vote, req.election);
                     }).then((encryptedVote) => {
-                        return submitUpdateVoteTx(req.election, voteId, encryptedVote);
+                        const passphrase = req.body.passphrase ? req.body.passphrase : "none";
+                        return submitUpdateVoteTx(req.election, voteId, encryptedVote, passphrase);
                     }).then((jobRef) => {
                         res.send({txId: jobRef.id, collection: COLLECTION_UPDATE_VOTE_TX});
                     }).catch((e) => {
@@ -727,7 +731,7 @@ exports.castVote = functions.firestore
         initGateway();
         let voteObj = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, {nonce: nonce, from: gatewayProvider.getAddress()})
+            return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {nonce: nonce, from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -748,7 +752,7 @@ exports.updateVote = functions.firestore
         initGateway();
         let voteObj = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, {nonce: nonce, from: gatewayProvider.getAddress()})
+            return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {nonce: nonce, from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
