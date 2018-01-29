@@ -23,6 +23,7 @@ const COLLECTION_ENCRYPTION_TX = "transactionPublishKey";
 const COLLECTION_CREATE_ELECTION_TX = "transactionCreateElection";
 const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
 const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
+const COLLECTION_ADMIN_GAS_TX = "transactionAdminGas";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -447,7 +448,30 @@ const revealerNonce = () => {
             resolve(res);
         });
     });
-}
+};
+
+const sendGas = (addr, amount) => {
+    return new Promise(function (resolve, reject) {
+        gatewayNonce().then((nonce)=>{
+            try {
+                gatewayWeb3.eth.sendTransaction({
+                    nonce: nonce,
+                    to: addr,
+                    value: amount,
+                    from: gatewayProvider.getAddress()
+                }, (err, res) => {
+                    if(!err) {
+                        resolve(res)
+                    }else{
+                        reject(err);
+                    }
+                })
+            }catch(e){
+                reject(e);
+            }
+        })
+    });
+};
 
 // ADMIN APIs
 const adminApp = express();
@@ -517,6 +541,41 @@ adminApp.post('/election', (req, res) => {
         sendError(res, 500, e.message);
     });
 });
+
+adminApp.post('/gas', (req, res) => {
+    if (!req.body.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+
+    return submitEthTransaction(COLLECTION_ADMIN_GAS_TX, {
+        address: req.body.address
+    }).then((ref) => {
+        res.send({txId: ref.id, collection: COLLECTION_ADMIN_GAS_TX});
+    }).catch((e) => {
+        console.error(e);
+        sendError(res, 500, e.message);
+    });
+});
+
+exports.payAdminGas = functions.firestore
+    .document(COLLECTION_ADMIN_GAS_TX + '/{id}')
+    .onCreate(event => {
+        initGateway();
+        let data = event.data.data();
+        return sendGas(data.address, gatewayWeb3.toWei(4, "ether")).then((txId) => {
+            return event.data.ref.set({
+                tx: txId,
+                status: "complete"
+            }, {merge: true});
+        }).catch((e) => {
+            console.error(e);
+            return event.data.ref.set({
+                status: "error",
+                error: e.message
+            }, {merge: true});
+        });
+    });
 
 exports.electionClose = functions.firestore
     .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
