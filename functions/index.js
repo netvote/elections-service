@@ -811,7 +811,8 @@ exports.castVote = functions.firestore
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
-                status: "complete"
+                status: "complete",
+                voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
             console.error(e);
@@ -832,7 +833,8 @@ exports.updateVote = functions.firestore
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
-                status: "complete"
+                status: "complete",
+                voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
             console.error(e);
