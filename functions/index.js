@@ -353,6 +353,13 @@ const generateKeys = (uid, electionId, count) => {
     });
 };
 
+const votedAlready = (addr, voteId) => {
+    return GatewayElection.at(addr).votes(voteId).then((res)=>{
+        console.log("res="+res);
+        return res !== '';
+    });
+};
+
 const calculateRegKey = (electionId, key) => {
     return toHmac(electionId + ":" + key, regKeySecret);
 };
@@ -455,7 +462,6 @@ const sendGas = (addr, amount) => {
         gatewayNonce().then((nonce)=>{
             try {
                 gatewayWeb3.eth.sendTransaction({
-                    nonce: nonce,
                     to: addr,
                     value: amount,
                     from: gatewayProvider.getAddress()
@@ -583,7 +589,7 @@ exports.electionClose = functions.firestore
         initGateway();
         let data = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(data.address).close({nonce: nonce, from: gatewayProvider.getAddress()})
+            return GatewayElection.at(data.address).close({from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -609,7 +615,7 @@ exports.electionActivate = functions.firestore
         let data = event.data.data();
 
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(data.address).activate({nonce: nonce, from: gatewayProvider.getAddress()})
+            return GatewayElection.at(data.address).activate({from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -643,7 +649,7 @@ exports.createElection = functions.firestore
                 data.metadataLocation,
                 gatewayAddress,
                 data.autoActivate,
-                {nonce: nonce, from: gatewayAddress})
+                {from: gatewayAddress})
         }).then((el) => {
                 addr = el.address;
                 tx = el.transactionHash+"";
@@ -680,7 +686,7 @@ exports.publishEncryption = functions.firestore
         initRevealer();
         let data = event.data.data();
         return revealerNonce().then((nonce)=>{
-            return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {nonce: nonce, from: revealerProvider.getAddress()})
+            return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {from: revealerProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -713,26 +719,37 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     initCrypto();
     let encodedVote = req.body.vote;
     let vote;
+    let encryptedVote;
     try {
         vote = Buffer.from(encodedVote, 'base64');
     } catch (e) {
         sendError(res, 400, 'must be valid base64 encoding');
         return;
     }
+    let update = false;
     if (!vote) {
         sendError(res, 400, "vote is required");
     } else {
-        validateVote(vote, req.election).then((valid) => {
+        return validateVote(vote, req.election).then((valid) => {
             let voteId = "";
+            const passphrase = req.body.passphrase ? req.body.passphrase : "none";
             getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret) => {
                 const voteIdHmac = toHmac(req.election + ":" + req.voter, secret);
                 voteId = gatewayWeb3.sha3(voteIdHmac);
                 return encrypt(vote, req.election);
-            }).then((encryptedVote) => {
-                const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-                return submitVoteTx(req.election, voteId, encryptedVote, passphrase);
+            }).then((encryptedPayload) => {
+                encryptedVote = encryptedPayload;
+                return votedAlready(req.election, voteId)
+            }).then((votedAlready)=>{
+                if(votedAlready){
+                    update = true;
+                    return submitUpdateVoteTx(req.election, voteId, encryptedVote, passphrase);
+                }else{
+                    return submitVoteTx(req.election, voteId, encryptedVote, passphrase);
+                }
             }).then((jobRef) => {
-                res.send({txId: jobRef.id, collection: COLLECTION_VOTE_TX});
+                let voteCollection = (update) ? COLLECTION_UPDATE_VOTE_TX : COLLECTION_VOTE_TX;
+                res.send({txId: jobRef.id, collection: voteCollection});
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message)
@@ -757,7 +774,7 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
     if (!vote) {
         sendError(res, 400, "vote is required");
     } else {
-        updatesAreAllowed(req.election).then((allowed)=>{
+        return updatesAreAllowed(req.election).then((allowed)=>{
             if(allowed) {
                 validateVote(vote, req.election).then((valid) => {
                     let voteId = "";
@@ -790,7 +807,7 @@ exports.castVote = functions.firestore
         initGateway();
         let voteObj = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {nonce: nonce, from: gatewayProvider.getAddress()})
+            return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -811,7 +828,7 @@ exports.updateVote = functions.firestore
         initGateway();
         let voteObj = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {nonce: nonce, from: gatewayProvider.getAddress()})
+            return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
