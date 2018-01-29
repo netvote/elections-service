@@ -529,6 +529,23 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
     });
 });
 
+adminApp.post('/election/encryption', electionOwnerCheck, (req, res) => {
+    if (!req.body.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+
+    //TODO: validate that election is either CLOSED or NO VOTES have arrived
+    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_TX).then((key)=>{
+        return submitEncryptTx(req.body.address, key, false);
+    }).then((ref) => {
+        res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
+    }).catch((e) => {
+        console.error(e);
+        sendError(res, 500, e.message);
+    });
+});
+
 adminApp.post('/election', (req, res) => {
     let isPublic = !!(req.body.isPublic);
     let metadataLocation = req.body.metadataLocation;
