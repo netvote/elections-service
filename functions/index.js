@@ -536,7 +536,7 @@ adminApp.post('/election/encryption', electionOwnerCheck, (req, res) => {
     }
 
     //TODO: validate that election is either CLOSED or NO VOTES have arrived
-    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_TX).then((key)=>{
+    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key)=>{
         return submitEncryptTx(req.body.address, key, false);
     }).then((ref) => {
         res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
