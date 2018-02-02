@@ -58,9 +58,12 @@ let HDWalletProvider;
 let contract;
 let Web3;
 
-let GatewayElection;
-let gatewayProvider;
-let gatewayWeb3;
+let BasicElection;
+let BaseElection;
+let BasePool;
+let BaseBallot;
+let web3Provider;
+let web3;
 
 let ipfs;
 
@@ -96,19 +99,33 @@ const initEth = () => {
 };
 
 const initGateway = () => {
-    if (!GatewayElection) {
+    if (!BasicElection) {
         initEth();
-        GatewayElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
-        gatewayProvider = new HDWalletProvider(mnemonic, apiUrl);
-        GatewayElection.setProvider(gatewayProvider);
-        gatewayWeb3 = new Web3(gatewayProvider);
-        gatewayWeb3.eth.defaultAccount = gatewayProvider.getAddress();
-        GatewayElection.defaults({
-            from: gatewayProvider.getAddress(),
+        web3Provider = new HDWalletProvider(mnemonic, apiUrl);
+        web3 = new Web3(web3Provider);
+        web3.eth.defaultAccount = web3Provider.getAddress();
+        const web3Defaults = {
+            from: web3Provider.getAddress(),
             chainId: (chainId) ? parseInt(chainId) : DEFAULT_CHAIN_ID,
             gas: (gas) ? parseInt(gas) : DEFAULT_GAS,
             gasPrice: (gasPrice) ? parseInt(gasPrice) : DEFAULT_GAS_PRICE
-        });
+        };
+
+        BasicElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
+        BasicElection.setProvider(web3Provider);
+        BasicElection.defaults(web3Defaults);
+
+        BaseElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BaseElection.json'));
+        BaseElection.setProvider(web3Provider);
+        BaseElection.defaults(web3Defaults);
+
+        BasePool = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasePool.json'));
+        BasePool.setProvider(web3Provider);
+        BasePool.defaults(web3Defaults);
+
+        BaseBallot = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BaseBallot.json'));
+        BaseBallot.setProvider(web3Provider);
+        BaseBallot.defaults(web3Defaults);
     }
 };
 
@@ -187,7 +204,7 @@ const ipfsLookup = (metadataLocation) => {
 const voteProto = () => {
     let protobuf = require("protobufjs");
     return new Promise((resolve, reject) => {
-        let root = protobuf.load("./node_modules/@netvote/elections-solidity/protocol/vote.proto").then((rt) => {
+        protobuf.load("./node_modules/@netvote/elections-solidity/protocol/vote.proto").then((rt) => {
             return rt.lookupType("netvote.Vote");
         }).then((tp) => {
             resolve(tp);
@@ -195,49 +212,64 @@ const voteProto = () => {
     });
 };
 
-const validateVote = (voteBuff, address) => {
-    initIpfs();
-
-    let VoteProto;
-    let metaLocation;
-    return GatewayElection.at(address).metadataLocation().then((location) => {
-        metaLocation = location;
-        return voteProto();
-    }).then((vp) => {
-        VoteProto = vp;
-        return ipfsLookup(metaLocation)
-    }).then((metadata) => {
+const decodeVote = (voteBuff) => {
+    return voteProto().then((VoteProto)=>{
         return new Promise((resolve, reject) => {
             let vote;
             try {
-                vote = VoteProto.decode(voteBuff);
+                resolve(VoteProto.decode(voteBuff));
             } catch (e) {
                 reject("invalid vote structure")
             }
-            //TODO: support multiple ballots
-            if (vote.ballotVotes.length !== 1) {
-                reject("vote must have 1 ballotVotes entry, actual=" + vote.ballotVotes.length)
-            }
-
-            if (vote.ballotVotes[0].choices.length !== metadata.decisions.length) {
-                reject("vote should have " + metadata.decisions.length + " choices but had " + vote.ballotVotes[0].choices.length);
-            }
-
-            vote.ballotVotes[0].choices.forEach((c, idx) => {
-                if (!c.writeIn) {
-                    if (c.selection < 0) {
-                        reject("vote cannot have a selection less than 0")
-                    }
-                    if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
-                        reject("vote must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1))
-                    }
-                }
-            });
-            resolve(true);
-        })
+        });
     })
 };
 
+const validateVote = (voteBuff, poolAddress) => {
+    let vote;
+    return new Promise((resolve, reject) => {
+        return decodeVote(voteBuff).then((v) => {
+            vote = v;
+            return BasePool.at(poolAddress).getBallotCount()
+        }).then((bc) => {
+            const ballotCount = parseInt(bc);
+            if (vote.ballotVotes.length !== ballotCount) {
+                reject("vote must have "+ballotCount+" ballotVotes, actual=" + vote.ballotVotes.length)
+            }
+            initIpfs();
+            for(let i=0; i<ballotCount; i++){
+                let ballotVote = vote.ballotVotes[i];
+                // validate this ballot vote
+                BasePool.at(poolAddress).getBallot(i).then((ballotAddress)=>{
+                    return BaseBallot.at(ballotAddress).metadataLocation()
+                }).then((location)=>{
+                    return ipfsLookup(location)
+                }).then((metadata)=>{
+
+                    if (ballotVote.choices.length !== metadata.decisions.length) {
+                        reject("ballotVotes["+i+"] should have " + metadata.decisions.length + " choices but had " + ballotVote.choices.length);
+                    }
+
+                    ballotVote.choices.forEach((c, idx) => {
+                        if (!c.writeIn) {
+                            if (c.selection < 0) {
+                                reject("ballotVotes["+i+"] choice["+idx+"] cannot have a selection less than 0")
+                            }
+                            if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
+                                reject("ballotVotes["+i+"] choice["+idx+"] must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1)+", was="+c.selection)
+                            }
+                        }else{
+                            if(c.writeIn.length > 200){
+                                reject("writeIn is limited to 200 characters")
+                            }
+                        }
+                    });
+                    resolve(true);
+                });
+            }
+        })
+    });
+};
 
 const electionOwnerCheck = (req, res, next) => {
     uidOwnsElection(req.user.uid, req.body.address).then((match) => {
@@ -342,8 +374,7 @@ const generateKeys = (uid, electionId, count) => {
 };
 
 const votedAlready = (addr, voteId) => {
-    return GatewayElection.at(addr).votes(voteId).then((res)=>{
-        console.log("res="+res);
+    return BasePool.at(addr).votes(voteId).then((res)=>{
         return res !== '';
     });
 };
@@ -366,7 +397,7 @@ const toHmac = (value, key) => {
 const uidOwnsElection = (uid, electionId) => {
     initGateway();
     return new Promise(function (resolve, reject) {
-        GatewayElection.at(electionId).createdBy().then((createdBy) => {
+        BasicElection.at(electionId).createdBy().then((createdBy) => {
             resolve(createdBy === uid);
         });
     });
@@ -394,7 +425,7 @@ const voterTokenCheck = (req, res, next) => {
             unauthorized(res);
         } else {
             req.voter = verifiedJwt.body.sub;
-            req.election = verifiedJwt.body.scope;
+            req.pool = verifiedJwt.body.scope;
             next();
         }
     });
@@ -425,13 +456,14 @@ const encrypt = (text, electionId) => {
 };
 
 const updatesAreAllowed = (address) => {
-    initGateway();
-    return GatewayElection.at(address).allowVoteUpdates()
+    return BasePool.at(address).election((el)=>{
+
+    });
 };
 
 const gatewayNonce = () => {
     return new Promise(function (resolve, reject) {
-        gatewayWeb3.eth.getTransactionCount(gatewayProvider.getAddress(), (err, res) => {
+        web3.eth.getTransactionCount(web3Provider.getAddress(), (err, res) => {
             resolve(res);
         });
     });
@@ -441,10 +473,10 @@ const sendGas = (addr, amount) => {
     return new Promise(function (resolve, reject) {
         gatewayNonce().then((nonce)=>{
             try {
-                gatewayWeb3.eth.sendTransaction({
+                web3.eth.sendTransaction({
                     to: addr,
                     value: amount,
-                    from: gatewayProvider.getAddress()
+                    from: web3Provider.getAddress()
                 }, (err, res) => {
                     if(!err) {
                         resolve(res)
@@ -566,7 +598,7 @@ exports.payAdminGas = functions.firestore
     .onCreate(event => {
         initGateway();
         let data = event.data.data();
-        return sendGas(data.address, gatewayWeb3.toWei(4, "ether")).then((txId) => {
+        return sendGas(data.address, web3.toWei(4, "ether")).then((txId) => {
             return event.data.ref.set({
                 tx: txId,
                 status: "complete"
@@ -586,7 +618,7 @@ exports.electionClose = functions.firestore
         initGateway();
         let data = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(data.address).close({from: gatewayProvider.getAddress()})
+            return BasicElection.at(data.address).close({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -612,7 +644,7 @@ exports.electionActivate = functions.firestore
         let data = event.data.data();
 
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(data.address).activate({from: gatewayProvider.getAddress()})
+            return BaseElection.at(data.address).activate({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -633,11 +665,11 @@ exports.createElection = functions.firestore
         initGateway();
         let data = event.data.data();
 
-        let gatewayAddress = gatewayProvider.getAddress();
+        let gatewayAddress = web3Provider.getAddress();
         let addr = "";
         let tx = "";
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.new(
+            return BasicElection.new(
                 data.uid,
                 allowanceAddress,
                 gatewayAddress,
@@ -683,7 +715,7 @@ exports.publishEncryption = functions.firestore
         initGateway();
         let data = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(data.address).setPrivateKey(data.key, {from: gatewayProvider.getAddress()})
+            return BaseElection.at(data.address).setPrivateKey(data.key, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -727,22 +759,22 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     if (!vote) {
         sendError(res, 400, "vote is required");
     } else {
-        return validateVote(vote, req.election).then((valid) => {
+        return validateVote(vote, req.pool).then((valid) => {
             let voteId = "";
             const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-            getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret) => {
-                const voteIdHmac = toHmac(req.election + ":" + req.voter, secret);
-                voteId = gatewayWeb3.sha3(voteIdHmac);
-                return encrypt(vote, req.election);
+            getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
+                const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
+                voteId = web3.sha3(voteIdHmac);
+                return encrypt(vote, req.pool);
             }).then((encryptedPayload) => {
                 encryptedVote = encryptedPayload;
-                return votedAlready(req.election, voteId)
+                return votedAlready(req.pool, voteId)
             }).then((votedAlready)=>{
                 if(votedAlready){
                     update = true;
-                    return submitUpdateVoteTx(req.election, voteId, encryptedVote, passphrase);
+                    return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase);
                 }else{
-                    return submitVoteTx(req.election, voteId, encryptedVote, passphrase);
+                    return submitVoteTx(req.pool, voteId, encryptedVote, passphrase);
                 }
             }).then((jobRef) => {
                 let voteCollection = (update) ? COLLECTION_UPDATE_VOTE_TX : COLLECTION_VOTE_TX;
@@ -771,17 +803,17 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
     if (!vote) {
         sendError(res, 400, "vote is required");
     } else {
-        return updatesAreAllowed(req.election).then((allowed)=>{
+        return updatesAreAllowed(req.pool).then((allowed)=>{
             if(allowed) {
-                validateVote(vote, req.election).then((valid) => {
+                validateVote(vote, req.pool).then((valid) => {
                     let voteId = "";
-                    getHashKey(req.election, COLLECTION_HASH_SECRETS).then((secret) => {
-                        const voteIdHmac = toHmac(req.election + ":" + req.voter, secret);
-                        voteId = gatewayWeb3.sha3(voteIdHmac);
-                        return encrypt(vote, req.election);
+                    getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
+                        const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
+                        voteId = web3.sha3(voteIdHmac);
+                        return encrypt(vote, req.pool);
                     }).then((encryptedVote) => {
                         const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-                        return submitUpdateVoteTx(req.election, voteId, encryptedVote, passphrase);
+                        return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase);
                     }).then((jobRef) => {
                         res.send({txId: jobRef.id, collection: COLLECTION_UPDATE_VOTE_TX});
                     }).catch((e) => {
@@ -804,7 +836,7 @@ exports.castVote = functions.firestore
         initGateway();
         let voteObj = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: gatewayProvider.getAddress()})
+            return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -826,7 +858,7 @@ exports.updateVote = functions.firestore
         initGateway();
         let voteObj = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return GatewayElection.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: gatewayProvider.getAddress()})
+            return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
