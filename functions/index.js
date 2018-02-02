@@ -12,7 +12,6 @@ Array.prototype.pushArray = function (arr) {
 let crypto;
 let nJwt;
 
-const ALLOWANCE_ADDRESS = "0xdd7bd7cc567c025ac49d7892ec9c33a0ca298ca6";
 
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
@@ -27,31 +26,37 @@ const COLLECTION_ADMIN_GAS_TX = "transactionAdminGas";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
-//CONFIG
-const mnemonic = functions.config().netvote.ropsten.admin.mnemonic;
-const apiUrl = functions.config().netvote.ropsten.apiurl;
+
+// SECRETS CONFIG
 
 // for hmac-ing reg key for storage
-const regKeySecret = functions.config().netvote.ropsten.voterkeysecret;
+const regKeySecret = functions.config().netvote.secret.voterkey;
 
 // for signing JWT
-const voteTokenSecret = functions.config().netvote.ropsten.votetokensecret;
+const voteTokenSecret = functions.config().netvote.secret.votetoken;
 
 // for hmac-ing voterId
-const voterIdHmacSecret = functions.config().netvote.ropsten.voteridhashsecret;
+const voterIdHmacSecret = functions.config().netvote.secret.voteridhash;
 
 // for hmac-ing stored secrets
-const storageHashSecret = functions.config().netvote.ropsten.storagehashsecret;
+const storageHashSecret = functions.config().netvote.secret.storagehash;
+
+// GATEWAY CONFIG
+const DEFAULT_GAS = 4512388;
+const DEFAULT_GAS_PRICE = 1000000000000;
+const DEFAULT_CHAIN_ID = 3;
+const mnemonic = functions.config().netvote.eth.gateway.mnemonic;
+const apiUrl = functions.config().netvote.eth.apiurl;
+const gas = functions.config().netvote.eth.gas;
+const gasPrice = functions.config().netvote.eth.gasprice;
+const chainId = functions.config().netvote.eth.chainid;
+const allowanceAddress = functions.config().netvote.eth.allowanceaddress;
 
 let uuid;
 
 let HDWalletProvider;
 let contract;
 let Web3;
-
-let KeyRevealerElection;
-let revealerProvider;
-let revealerWeb3;
 
 let GatewayElection;
 let gatewayProvider;
@@ -100,26 +105,9 @@ const initGateway = () => {
         gatewayWeb3.eth.defaultAccount = gatewayProvider.getAddress();
         GatewayElection.defaults({
             from: gatewayProvider.getAddress(),
-            chainId: 3,
-            gas: 4512388,
-            gasPrice: 1000000000000
-        });
-    }
-};
-
-const initRevealer = () => {
-    if (!KeyRevealerElection) {
-        initEth();
-        KeyRevealerElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
-        revealerProvider = new HDWalletProvider(mnemonic, apiUrl);
-        KeyRevealerElection.setProvider(revealerProvider);
-        revealerWeb3 = new Web3(revealerProvider);
-        revealerWeb3.eth.defaultAccount = revealerProvider.getAddress();
-        KeyRevealerElection.defaults({
-            from: revealerProvider.getAddress(),
-            chainId: 3,
-            gas: 4512388,
-            gasPrice: 1000000000000
+            chainId: (chainId) ? parseInt(chainId) : DEFAULT_CHAIN_ID,
+            gas: (gas) ? parseInt(gas) : DEFAULT_GAS,
+            gasPrice: (gasPrice) ? parseInt(gasPrice) : DEFAULT_GAS_PRICE
         });
     }
 };
@@ -449,14 +437,6 @@ const gatewayNonce = () => {
     });
 }
 
-const revealerNonce = () => {
-    return new Promise(function (resolve, reject) {
-        revealerWeb3.eth.getTransactionCount(revealerProvider.getAddress(), (err, res) => {
-            resolve(res);
-        });
-    });
-};
-
 const sendGas = (addr, amount) => {
     return new Promise(function (resolve, reject) {
         gatewayNonce().then((nonce)=>{
@@ -659,7 +639,7 @@ exports.createElection = functions.firestore
         return gatewayNonce().then((nonce)=>{
             return GatewayElection.new(
                 data.uid,
-                ALLOWANCE_ADDRESS,
+                allowanceAddress,
                 gatewayAddress,
                 data.allowUpdates,
                 gatewayAddress,
@@ -700,10 +680,10 @@ exports.createElection = functions.firestore
 exports.publishEncryption = functions.firestore
     .document(COLLECTION_ENCRYPTION_TX + '/{id}')
     .onCreate(event => {
-        initRevealer();
+        initGateway();
         let data = event.data.data();
-        return revealerNonce().then((nonce)=>{
-            return KeyRevealerElection.at(data.address).setPrivateKey(data.key, {from: revealerProvider.getAddress()})
+        return gatewayNonce().then((nonce)=>{
+            return GatewayElection.at(data.address).setPrivateKey(data.key, {from: gatewayProvider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
