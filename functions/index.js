@@ -12,6 +12,9 @@ Array.prototype.pushArray = function (arr) {
 let crypto;
 let nJwt;
 
+const PHASE_BUILDING = 0;
+const PHASE_VOTING = 1;
+const PHASE_CLOSED = 2;
 
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
@@ -60,6 +63,7 @@ let Web3;
 
 // contracts
 let ExternalAuthorizable;
+let ElectionPhaseable;
 let BasicElection;
 let BaseElection;
 let BasePool;
@@ -113,6 +117,10 @@ const initGateway = () => {
             gas: (gas) ? parseInt(gas) : DEFAULT_GAS,
             gasPrice: (gasPrice) ? parseInt(gasPrice) : DEFAULT_GAS_PRICE
         };
+
+        ElectionPhaseable = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/ElectionPhaseable.json'));
+        ElectionPhaseable.setProvider(web3Provider);
+        ElectionPhaseable.defaults(web3Defaults);
 
         ExternalAuthorizable = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/ExternalAuthorizable.json'));
         ExternalAuthorizable.setProvider(web3Provider);
@@ -499,6 +507,15 @@ const sendGas = (addr, amount) => {
     });
 };
 
+const inPhase = (address, phases) => {
+    initGateway();
+    return new Promise(function (resolve, reject) {
+        ElectionPhaseable.at(address).electionPhase().then((phase) => {
+            resolve(phases.indexOf(phase.toNumber()) > -1);
+        });
+    })
+};
+
 // ADMIN APIs
 const adminApp = express();
 adminApp.use(cors());
@@ -555,11 +572,17 @@ adminApp.post('/election/encryption', electionOwnerCheck, (req, res) => {
         return;
     }
 
-    //TODO: validate that election is either CLOSED or NO VOTES have arrived
-    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key)=>{
-        return submitEncryptTx(req.body.address, key, false);
-    }).then((ref) => {
-        res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
+    // elections can only add decryption keys IF election is in building or closed states
+    return inPhase(req.body.address, [PHASE_BUILDING, PHASE_CLOSED]).then((isValidPhase)=> {
+        if (!isValidPhase) {
+            sendError(res, 409, "Election must be in Building or Closed state");
+            return;
+        }
+        return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) => {
+            return submitEncryptTx(req.body.address, key, true);
+        }).then((ref) => {
+            res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
+        })
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -626,16 +649,12 @@ exports.electionClose = functions.firestore
         initGateway();
         let data = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return BaseElection.at(data.address).close({from: web3Provider.getAddress()})
+            return ElectionPhaseable.at(data.address).close({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete"
             }, {merge: true});
-        }).then(()=>{
-            return getHashKey(data.address, COLLECTION_ENCRYPTION_KEYS)
-        }).then((key)=>{
-            return submitEncryptTx(data.address, key, true)
         }).catch((e) => {
             console.error(e);
             return event.data.ref.set({
@@ -652,7 +671,7 @@ exports.electionActivate = functions.firestore
         let data = event.data.data();
 
         return gatewayNonce().then((nonce)=>{
-            return BaseElection.at(data.address).activate({from: web3Provider.getAddress()})
+            return ElectionPhaseable.at(data.address).activate({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
