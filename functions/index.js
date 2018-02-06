@@ -58,10 +58,13 @@ let HDWalletProvider;
 let contract;
 let Web3;
 
+// contracts
+let ExternalAuthorizable;
 let BasicElection;
 let BaseElection;
 let BasePool;
 let BaseBallot;
+
 let web3Provider;
 let web3;
 
@@ -110,6 +113,10 @@ const initGateway = () => {
             gas: (gas) ? parseInt(gas) : DEFAULT_GAS,
             gasPrice: (gasPrice) ? parseInt(gasPrice) : DEFAULT_GAS_PRICE
         };
+
+        ExternalAuthorizable = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/ExternalAuthorizable.json'));
+        ExternalAuthorizable.setProvider(web3Provider);
+        ExternalAuthorizable.defaults(web3Defaults);
 
         BasicElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
         BasicElection.setProvider(web3Provider);
@@ -272,7 +279,7 @@ const validateVote = (voteBuff, poolAddress) => {
 };
 
 const electionOwnerCheck = (req, res, next) => {
-    uidOwnsElection(req.user.uid, req.body.address).then((match) => {
+    uidAuthorized(req.user.uid, req.body.address).then((match) => {
         if (match) {
             return next();
         }
@@ -394,11 +401,12 @@ const toHmac = (value, key) => {
     return hmac.digest('hex');
 };
 
-const uidOwnsElection = (uid, electionId) => {
+const uidAuthorized = (uid, electionId) => {
     initGateway();
+    const uidHash = web3.sha3(uid);
     return new Promise(function (resolve, reject) {
-        BasicElection.at(electionId).createdBy().then((createdBy) => {
-            resolve(createdBy === uid);
+        ExternalAuthorizable.at(electionId).isAuthorized(uidHash).then((authorized) => {
+            resolve(authorized);
         });
     });
 };
@@ -618,7 +626,7 @@ exports.electionClose = functions.firestore
         initGateway();
         let data = event.data.data();
         return gatewayNonce().then((nonce)=>{
-            return BasicElection.at(data.address).close({from: web3Provider.getAddress()})
+            return BaseElection.at(data.address).close({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -670,7 +678,7 @@ exports.createElection = functions.firestore
         let tx = "";
         return gatewayNonce().then((nonce)=>{
             return BasicElection.new(
-                data.uid,
+                web3.sha3(data.uid),
                 allowanceAddress,
                 gatewayAddress,
                 data.allowUpdates,
