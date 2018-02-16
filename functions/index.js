@@ -16,6 +16,8 @@ const PHASE_BUILDING = 0;
 const PHASE_VOTING = 1;
 const PHASE_CLOSED = 2;
 
+const COLLECTION_DEMO_ELECTIONS = "demoElections";
+
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
@@ -73,6 +75,14 @@ let web3Provider;
 let web3;
 
 let ipfs;
+
+let qr;
+
+const initQr = () => {
+    if(!qr) {
+        qr = require('qr-image');
+    }
+}
 
 const initIpfs = () => {
     let IPFS = require('ipfs-mini');
@@ -345,6 +355,19 @@ const submitEthTransaction = (collection, obj) => {
     return db.collection(collection).add(obj);
 };
 
+const isDemoElection = (electionId) => {
+    return new Promise(function (resolve, reject) {
+        let db = admin.firestore();
+        return db.collection(COLLECTION_DEMO_ELECTIONS).doc(electionId).get().then((doc) => {
+            if (doc.exists) {
+                resolve(doc.data().enabled);
+            } else {
+                resolve(false);
+            }
+        });
+    })
+}
+
 const getHashKey = (electionId, collection) => {
     initUuid();
     return new Promise(function (resolve, reject) {
@@ -515,6 +538,46 @@ const inPhase = (address, phases) => {
         });
     })
 };
+
+// DEMO APIs
+const demoApp = express();
+demoApp.use(cors());
+demoApp.use(cookieParser());
+demoApp.get('/qr/election/:address', (req, res) => {
+    initQr();
+    if (!req.params.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    let code = qr.image(req.params.address, { type: 'png' });
+    res.setHeader('Content-type', 'image/png');  //sent qr image to client side
+    code.pipe(res);
+})
+
+demoApp.get('/qr/key/:address', (req, res) => {
+    initQr();
+    if (!req.params.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    return isDemoElection(req.params.address).then((allowed) => {
+        if (allowed) {
+            generateKeys("demo", req.params.address, 1).then((keys) => {
+                let code = qr.image(keys[0], {type: 'png'});
+                res.setHeader('Content-type', 'image/png');  //sent qr image to client side
+                code.pipe(res);
+            }).catch((e) => {
+                console.error(e);
+                sendError(res, 500, e.message);
+            });
+        }else {
+            sendError(res, 403, req.params.address+" is not a demo election");
+        }
+    });
+});
+
+exports.demo = functions.https.onRequest(demoApp);
+
 
 // ADMIN APIs
 const adminApp = express();

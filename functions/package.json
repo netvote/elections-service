@@ -19,6 +19,7 @@
     "moment": "^2.20.1",
     "njwt": "^0.4.0",
     "protobufjs": "^6.8.4",
+    "qr-image": "^3.2.0",
     "truffle-contract": "^3.0.1",
     "truffle-hdwallet-provider": "0.0.3",
     "uuid": "^3.2.1",
