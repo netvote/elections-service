@@ -322,21 +322,23 @@ const submitEncryptTx = (address, key, deleteHash) => {
     });
 };
 
-const submitVoteTx = (address, voteId, encryptedVote, passphrase) => {
+const submitVoteTx = (address, voteId, encryptedVote, passphrase, pushToken) => {
     return submitEthTransaction(COLLECTION_VOTE_TX, {
         address: address,
         voteId: voteId,
         encryptedVote: encryptedVote,
-        passphrase: passphrase
+        passphrase: passphrase,
+        pushToken: pushToken
     });
 };
 
-const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase) => {
+const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase, pushToken) => {
     return submitEthTransaction(COLLECTION_UPDATE_VOTE_TX, {
         address: address,
         voteId: voteId,
         encryptedVote: encryptedVote,
-        passphrase: passphrase
+        passphrase: passphrase,
+        pushToken: pushToken
     });
 };
 
@@ -860,11 +862,15 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 encryptedVote = encryptedPayload;
                 return votedAlready(req.pool, voteId)
             }).then((votedAlready)=>{
+                let pushToken = "";
+                if(req.body.pushToken){
+                    pushToken = req.body.pushToken;
+                }
                 if(votedAlready){
                     update = true;
-                    return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase);
+                    return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken);
                 }else{
-                    return submitVoteTx(req.pool, voteId, encryptedVote, passphrase);
+                    return submitVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken);
                 }
             }).then((jobRef) => {
                 let voteCollection = (update) ? COLLECTION_UPDATE_VOTE_TX : COLLECTION_VOTE_TX;
@@ -902,8 +908,12 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
                         voteId = web3.sha3(voteIdHmac);
                         return encrypt(vote, req.pool);
                     }).then((encryptedVote) => {
+                        let pushToken = "";
+                        if(req.body.pushToken){
+                            pushToken = req.body.pushToken;
+                        }
                         const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-                        return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase);
+                        return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken);
                     }).then((jobRef) => {
                         res.send({txId: jobRef.id, collection: COLLECTION_UPDATE_VOTE_TX});
                     }).catch((e) => {
@@ -962,6 +972,43 @@ exports.updateVote = functions.firestore
                 error: e.message
             }, {merge: true});
         });
+    });
+
+
+const sendNotification = (regToken, text) => {
+    return admin.messaging().sendToDevice(regToken, {
+        notification: {
+            title: 'Vote Accepted',
+            body: text,
+            icon: 'https://netvote.io/wp-content/uploads/2017/09/cropped-favicon-32x32.png',
+        }
+    });
+};
+
+exports.notifyCastVote = functions.firestore
+    .document(COLLECTION_VOTE_TX + '/{id}')
+    .onUpdate(event => {
+        let jobObj = event.data.data();
+        if(jobObj.pushToken){
+            if(jobObj.status === "complete"){
+                return sendNotification(jobObj.pushToken, jobObj.tx)
+            }else if(jobObj.status === "error"){
+                return sendNotification(jobObj.pushToken, "error")
+            }
+        }
+    });
+
+exports.notifyUpdateVote = functions.firestore
+    .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
+    .onUpdate(event => {
+        let jobObj = event.data.data();
+        if(jobObj.pushToken){
+            if(jobObj.status === "complete"){
+                return sendNotification(jobObj.pushToken, jobObj.tx)
+            }else if(jobObj.status === "error"){
+                return sendNotification(jobObj.pushToken, "error")
+            }
+        }
     });
 
 
