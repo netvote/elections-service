@@ -673,41 +673,6 @@ adminApp.post('/election', (req, res) => {
     });
 });
 
-adminApp.post('/gas', (req, res) => {
-    if (!req.body.address) {
-        sendError(res, 400, "address is required");
-        return;
-    }
-
-    return submitEthTransaction(COLLECTION_ADMIN_GAS_TX, {
-        address: req.body.address
-    }).then((ref) => {
-        res.send({txId: ref.id, collection: COLLECTION_ADMIN_GAS_TX});
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
-    });
-});
-
-exports.payAdminGas = functions.firestore
-    .document(COLLECTION_ADMIN_GAS_TX + '/{id}')
-    .onCreate(event => {
-        initGateway();
-        let data = event.data.data();
-        return sendGas(data.address, web3.toWei(4, "ether")).then((txId) => {
-            return event.data.ref.set({
-                tx: txId,
-                status: "complete"
-            }, {merge: true});
-        }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
-        });
-    });
-
 exports.electionClose = functions.firestore
     .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
     .onCreate(event => {
