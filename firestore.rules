@@ -35,6 +35,11 @@ service cloud.firestore {
         allow write: if false;
     }
 
+    match /transactionUpdateVote/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
     match /transactionPublishKey/{id} {
         allow read: if true;
         allow write: if false;
