@@ -151,7 +151,9 @@ Note:
 
 Generate voter keys for the election and return.  This will store a one-way HMAC of the key in firebase to be looked up.  
 
-NOTE: the UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.
+NOTE: 
+- The UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.  
+- The contract stores web3.sha3(uid) as the reference
 
 Body:
 ```
@@ -175,7 +177,9 @@ The response is the only time these keys are visible.  The admin must ensure the
 
 If not already activated (via autoActivate), this will allow voting for the election.
 
-NOTE: the UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.
+NOTE: 
+- The UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.  
+- The contract stores web3.sha3(uid) as the reference
 
 Body:
 ```
@@ -201,11 +205,14 @@ Body:
 
 ### POST /admin/election/encryption
 
-This will post the encryption key to the election contract to allow for vote reveal.  
+This will do the following: 
+1. Post the encryption key to the election contract to allow for vote reveal. 
+2. Delete the hashing secret for the election to preserve anonymity even in full-collusion cases.
 
 NOTE: 
-- the UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.
-- the election must be either closed OR not yet activated 
+- The UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.  
+- The contract stores web3.sha3(uid) as the reference
+- The election must be either closed OR not yet activated 
 
 Body:
 ```
