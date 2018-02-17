@@ -7,10 +7,8 @@ As described in the [Netvote White Paper](https://netvote.io/wp-content/uploads/
 
 Note: This project has not undergone any security audit, and should not be used to manage real elections at this time.
 
-APIs
+Voter APIs
 -------------------
-
-## Vote APIs
 
 ### POST /vote/auth
 
@@ -96,9 +94,10 @@ Returns:
 Note: 
 - The firebase collection reference can be polled for completion.  (obj.status = complete) 
 
-## Admin APIs
+Admin APIs
+-------------------
 
-Note: these are primarily for demo purposes.  We expect standard elections to be fully-DApp driven.  There may be a case where we support a service-like experience.
+Note: these are *primarily* for demo purposes.  We expect standard elections to be fully-DApp driven.  There may be a case where we support a service-like experience.
 
 ### POST /admin/election
 
