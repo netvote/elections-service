@@ -91,7 +91,7 @@ Body:
 
 Returns:
 ```
-{"txId":"OBJECT-REFERENCE","collection":"transactionCastVote"}
+{"txId":"OBJECT-REFERENCE","collection":"transactionUpdateVote"}
 ```
 Note: 
 - The firebase collection reference can be polled for completion.  (obj.status = complete) 
@@ -120,7 +120,7 @@ Body:
 
 Returns:
 ```
-{"txId":"DI3emygqJPQqfimpbbBn","collection":"transactionCreateElection"}
+{"txId":"OBJECT-REFERENCE","collection":"transactionCreateElection"}
 ```
 Note: 
 - The firebase collection reference can be polled for completion.  (obj.status = complete) 
