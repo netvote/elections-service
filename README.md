@@ -1,4 +1,4 @@
-# elections-service
+# Elections Service APIs
 Demo API integration for Netvote 
 
 Background
