@@ -3,16 +3,39 @@ Demo API integration for Netvote
 
 Background
 -------------------
-As described in the [Netvote White Paper](https://netvote.io/wp-content/uploads/2018/01/Netvote-White-Paper-v6.pdf), accepting a vote involves Authentication, Authorization, and a Vote Gateway.  For large elections (Government or otherwise), Authentication & Authorization steps will involve integrations that will vary per organization.  This project provides a demo-ready Authentication, Authorization, and Vote Gateway built on top of Firebase via a set of APIs.  
+As described in the [Netvote White Paper](https://netvote.io/wp-content/uploads/2018/01/Netvote-White-Paper-v6.pdf), accepting a vote involves Authentication, Authorization, and a Vote Gateway.  For large elections (Government or otherwise), Authentication & Authorization steps will involve integrations that will vary per organization.  
+
+This project provides a demo-ready Authentication, Authorization, and Vote Gateway built on top of Firebase via a set of APIs.  
 
 Note: This project has not undergone any security audit, and should not be used to manage real elections at this time.
+
+Election Flow
+-------------------
+### Election Setup
+1. Create ballot metadata and post to IPFS (no API)
+2. Create election with IPFS reference, and save off address for QR (API)
+3. Create Voter Keys (via API)
+4. Distribute Voter Keys in QRs (directly, no API)
+5. Activate Election (if not auto-activated)
+
+### Voting
+6. Scan QR containing election ethereum address
+7. Make selections in application
+8. Scan QR containing Voter Key, exchange key for JWT Token
+9. Submit vote with JWT Token
+
+### Election End
+10. Close election (via API or DApp)
+11. Reveal Encryption Key (via API)
+12. Tally Results in application
+
 
 Voter APIs
 -------------------
 
 ### POST /vote/auth
 
-Exchange a registration key for a vote token.  The key is in place of what would normally involve showing one's ID at a polling station.  In this case, it is the Admin's reponsibility to distribute the key safely to voters who may vote.
+Exchange a voter key for a vote token.  The key is in place of what would normally involve showing one's ID at a polling station.  In this case, it is the Admin's reponsibility to distribute the key safely to voters who may vote.
 
 Note:
 - The vote token is currently good for one hour from exchange. 
@@ -126,7 +149,7 @@ Note:
 
 ### POST /admin/election/keys
 
-Generate registration keys for the election and return.  This will store a one-way HMAC of the key in firebase to be looked up.  
+Generate voter keys for the election and return.  This will store a one-way HMAC of the key in firebase to be looked up.  
 
 NOTE: the UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.
 
