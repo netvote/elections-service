@@ -5,7 +5,7 @@ Background
 -------------------
 As described in the [Netvote White Paper](https://netvote.io/wp-content/uploads/2018/01/Netvote-White-Paper-v6.pdf), accepting a vote involves Authentication, Authorization, and a Vote Gateway.  For large elections (Government or otherwise), Authentication & Authorization steps will involve integrations that will vary per organization.  
 
-This project provides a demo-ready Authentication, Authorization, and Vote Gateway built on top of Firebase via a set of APIs.  
+This project provides a demo-ready Authentication, Authorization, and Vote Gateway built on top of Firebase.  In this simple case, any voter who provides a valid key is allowed to vote.  The admin is responsible for distributing a key to the correct voters.
 
 Note: This project has not undergone any security audit, and should not be used to manage real elections at this time.
 
