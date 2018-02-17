@@ -605,8 +605,11 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
         return;
     }
 
-    return submitEthTransaction(COLLECTION_ACTIVATE_ELECTION_TX,{
-        address: req.body.address
+    // initializes encryption key
+    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key)=>{
+        return submitEthTransaction(COLLECTION_ACTIVATE_ELECTION_TX,{
+            address: req.body.address
+        })
     }).then((ref) => {
         res.send({txId: ref.id, collection: COLLECTION_ACTIVATE_ELECTION_TX});
     }).catch((e) => {
@@ -742,12 +745,12 @@ exports.createElection = functions.firestore
         }).then(()=>{
             // generate hash key for voters
             return getHashKey(addr, COLLECTION_HASH_SECRETS);
-        }).then(()=>{
+        }).then(()=> {
+            return getHashKey(addr, COLLECTION_ENCRYPTION_KEYS)
             // add key if should add key
+        }).then((key)=>{
             if (data.isPublic) {
-                return getHashKey(addr, COLLECTION_ENCRYPTION_KEYS).then((key) => {
-                    return submitEncryptTx(addr, key, false);
-                })
+                return submitEncryptTx(addr, key, false);
             } else {
                 return null;
             }
