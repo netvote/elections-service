@@ -591,6 +591,10 @@ adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
         sendError(res, 400, "count & address are required");
         return;
     }
+    if (req.body.count < 1 || reg.body.count > 100) {
+        sendError(res, 400, "count must be between 1 and 100");
+        return;
+    }
     generateKeys(req.user.uid, req.body.address, req.body.count).then((keys) => {
         res.send(keys);
     }).catch((e) => {

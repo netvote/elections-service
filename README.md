@@ -43,16 +43,17 @@ Note:
 
 Header
 ```
-Authorization: Bearer REG-KEY-HERE
+Authorization: Bearer VOTER-KEY-HERE
 ```
 
 Body:
 ```
 {
-	"address": "0xethereum-address",
-	"count": 1
+	"address": "0xethereum-address"
 }
 ```
+- **address**: (required) the address of the voter pool contract (for `BasicElection` contracts, its the election address)
+
 Returns:
 ```
 {
@@ -163,7 +164,7 @@ Body:
 }
 ```
 - **address**: (required) address of election on ethereum
-- **count**: (required) address of ballot metadata on IPFS
+- **count**: (required) number of keys to create in this request
 
 Returns:
 ```
