@@ -557,7 +557,6 @@ demoApp.get('/qr/election/:address', (req, res) => {
 })
 
 demoApp.get('/key/:address', (req, res) => {
-    initQr();
     if (!req.params.address) {
         sendError(res, 400, "address is required");
         return;
