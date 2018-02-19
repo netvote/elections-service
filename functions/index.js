@@ -556,6 +556,26 @@ demoApp.get('/qr/election/:address', (req, res) => {
     code.pipe(res);
 })
 
+demoApp.get('/key/:address', (req, res) => {
+    initQr();
+    if (!req.params.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    return isDemoElection(req.params.address).then((allowed) => {
+        if (allowed) {
+            generateKeys("demo", req.params.address, 1).then((keys) => {
+                res.send({key: keys[0]});
+            }).catch((e) => {
+                console.error(e);
+                sendError(res, 500, e.message);
+            });
+        }else {
+            sendError(res, 403, req.params.address+" is not a demo election");
+        }
+    });
+});
+
 demoApp.get('/qr/key/:address', (req, res) => {
     initQr();
     if (!req.params.address) {
