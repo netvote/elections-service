@@ -27,7 +27,7 @@ const COLLECTION_ENCRYPTION_TX = "transactionPublishKey";
 const COLLECTION_CREATE_ELECTION_TX = "transactionCreateElection";
 const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
 const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
-const COLLECTION_ADMIN_GAS_TX = "transactionAdminGas";
+const COLLECTION_TOKEN_TRANSFER_TX = "transactionTokenTransfer";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -55,7 +55,7 @@ const apiUrl = functions.config().netvote.eth.apiurl;
 const gas = functions.config().netvote.eth.gas;
 const gasPrice = functions.config().netvote.eth.gasprice;
 const chainId = functions.config().netvote.eth.chainid;
-const allowanceAddress = functions.config().netvote.eth.allowanceaddress;
+const voteAddress = functions.config().netvote.eth.voteaddress;
 
 let uuid;
 
@@ -70,6 +70,7 @@ let BasicElection;
 let BaseElection;
 let BasePool;
 let BaseBallot;
+let Vote;
 
 let web3Provider;
 let web3;
@@ -151,6 +152,10 @@ const initGateway = () => {
         BaseBallot = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BaseBallot.json'));
         BaseBallot.setProvider(web3Provider);
         BaseBallot.defaults(web3Defaults);
+
+        Vote = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/Vote.json'));
+        Vote.setProvider(web3Provider);
+        Vote.defaults(web3Defaults);
     }
 };
 
@@ -610,7 +615,7 @@ adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
         sendError(res, 400, "count & address are required");
         return;
     }
-    if (req.body.count < 1 || reg.body.count > 100) {
+    if (req.body.count < 1 || req.body.count > 100) {
         sendError(res, 400, "count must be between 1 and 100");
         return;
     }
@@ -754,7 +759,7 @@ exports.createElection = functions.firestore
         return gatewayNonce().then((nonce)=>{
             return BasicElection.new(
                 web3.sha3(data.uid),
-                allowanceAddress,
+                voteAddress,
                 gatewayAddress,
                 data.allowUpdates,
                 gatewayAddress,
@@ -771,12 +776,16 @@ exports.createElection = functions.firestore
         }).then(()=> {
             return getHashKey(addr, COLLECTION_ENCRYPTION_KEYS)
             // add key if should add key
-        }).then((key)=>{
+        }).then((key)=> {
             if (data.isPublic) {
                 return submitEncryptTx(addr, key, false);
             } else {
                 return null;
             }
+        }).then(()=>{
+            return submitEthTransaction(COLLECTION_TOKEN_TRANSFER_TX, {
+                address: addr
+            });
         }).then(()=>{
             return event.data.ref.set({
                 tx: tx,
@@ -920,6 +929,27 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
         })
     }
 });
+
+exports.transferToken = functions.firestore
+    .document(COLLECTION_TOKEN_TRANSFER_TX + '/{id}')
+    .onCreate(event => {
+        initGateway();
+        let obj = event.data.data();
+        return gatewayNonce().then((nonce)=>{
+            return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()});
+        }).then((tx) => {
+            return event.data.ref.set({
+                status: "complete",
+                tx: tx.tx
+            }, {merge: true});
+        }).catch((e) => {
+            console.error(e);
+            return event.data.ref.set({
+                status: "complete",
+                error: ""+e.message
+            }, {merge: true});
+        });
+    });
 
 exports.castVote = functions.firestore
     .document(COLLECTION_VOTE_TX + '/{id}')
