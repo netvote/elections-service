@@ -9,11 +9,12 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
-    "@netvote/elections-solidity": "^1.0.9",
+    "@netvote/elections-solidity": "^1.0.11",
+    "ajv": "^6.1.1",
     "cookie-parser": "^1.4.3",
     "cors": "^2.8.4",
     "express": "^4.16.2",
-    "firebase-admin": "~5.5.0",
+    "firebase-admin": "~5.8.1",
     "firebase-functions": "^0.8.1",
     "ipfs-mini": "^1.1.2",
     "moment": "^2.20.1",

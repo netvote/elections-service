@@ -935,19 +935,23 @@ exports.transferToken = functions.firestore
     .onCreate(event => {
         initGateway();
         let obj = event.data.data();
-        return gatewayNonce().then((nonce)=>{
-            return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()});
-        }).then((tx) => {
-            return event.data.ref.set({
-                status: "complete",
-                tx: tx.tx
-            }, {merge: true});
-        }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "complete",
-                error: ""+e.message
-            }, {merge: true});
+        return Vote.at(voteAddress).balanceOf(obj.address).then((bal)=>{
+            if (bal.toNumber() > 0) {
+                console.warn("Election "+obj.address+" already had balance of "+bal.toNumber())
+            } else {
+                return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()}).then((tx) => {
+                    return event.data.ref.set({
+                        status: "complete",
+                        tx: tx.tx
+                    }, {merge: true});
+                }).catch((e) => {
+                    console.error(e);
+                    return event.data.ref.set({
+                        status: "error",
+                        error: "" + e.message
+                    }, {merge: true});
+                });
+            }
         });
     });
 
