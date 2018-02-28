@@ -66,6 +66,8 @@ let Web3;
 // contracts
 let ExternalAuthorizable;
 let ElectionPhaseable;
+let TokenElection;
+let ERC20;
 let BasicElection;
 let BaseElection;
 let BasePool;
@@ -152,6 +154,14 @@ const initGateway = () => {
         BaseBallot = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BaseBallot.json'));
         BaseBallot.setProvider(web3Provider);
         BaseBallot.defaults(web3Defaults);
+
+        TokenElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/TokenElection.json'));
+        TokenElection.setProvider(web3Provider);
+        TokenElection.defaults(web3Defaults);
+
+        ERC20 = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/ERC20.json'));
+        ERC20.setProvider(web3Provider);
+        ERC20.defaults(web3Defaults);
 
         Vote = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/Vote.json'));
         Vote.setProvider(web3Provider);
@@ -245,7 +255,6 @@ const voteProto = () => {
 const decodeVote = (voteBuff) => {
     return voteProto().then((VoteProto)=>{
         return new Promise((resolve, reject) => {
-            let vote;
             try {
                 resolve(VoteProto.decode(voteBuff));
             } catch (e) {
@@ -255,13 +264,25 @@ const decodeVote = (voteBuff) => {
     })
 };
 
-const validateVote = (voteBuff, poolAddress) => {
-    let vote;
+const encodeVote = (voteObj) => {
+    return voteProto().then((VoteProto)=>{
+        return new Promise((resolve, reject) => {
+            let errMsg = VoteProto.verify(voteObj);
+            if (errMsg) {
+                console.error("error encoding proto: "+errMsg);
+                reject(errMsg);
+                return;
+            }
+
+            let res = VoteProto.create(voteObj);
+            resolve(VoteProto.encode(res).finish());
+        });
+    })
+};
+
+const validateVote = (vote, poolAddress) => {
     return new Promise((resolve, reject) => {
-        return decodeVote(voteBuff).then((v) => {
-            vote = v;
-            return BasePool.at(poolAddress).getBallotCount()
-        }).then((bc) => {
+        return BasePool.at(poolAddress).getBallotCount().then((bc) => {
             const ballotCount = parseInt(bc);
             if (vote.ballotVotes.length !== ballotCount) {
                 reject("vote must have "+ballotCount+" ballotVotes, actual=" + vote.ballotVotes.length)
@@ -464,6 +485,30 @@ const voterIdCheck = (req, res, next) => {
     });
 };
 
+const tokenOwnerCheck = (req, res, next) => {
+    //TODO: check signature
+    if(!req.body.owner){
+        sendError(res, 400, "owner (address) is required");
+        return;
+    }
+    if(!req.body.address){
+        sendError(res, 400, "address (of election) is required");
+        return;
+    }
+
+    //TODO: get balance at point in time rather than current balance
+    TokenElection.at(req.body.address).tokenAddress().then((erc20address) => {
+        return ERC20.at(erc20address).balanceOf(req.body.owner)
+    }).then((bal) => {
+        if(bal.toNumber() === 0){
+            sendError(res, 400, "This account has no balance on token "+erc20address);
+        }else{
+            req.weight = ""+web3.fromWei(bal.toNumber(), 'ether');
+            return next();
+        }
+    });
+};
+
 const voterTokenCheck = (req, res, next) => {
     initJwt();
     nJwt.verify(req.token, voteTokenSecret, function (err, verifiedJwt) {
@@ -472,21 +517,32 @@ const voterTokenCheck = (req, res, next) => {
         } else {
             req.voter = verifiedJwt.body.sub;
             req.pool = verifiedJwt.body.scope;
+            console.log("jwt weight = "+verifiedJwt.body.weight);
+            req.weight = verifiedJwt.body.weight;
+            let w = parseFloat(verifiedJwt.body.weight)
+            if(isNaN(w)){
+                req.weight = "1.0";
+            }
             next();
         }
     });
 };
 
-const createVoterJwt = (electionId, voterId) => {
+const createWeightedVoterJwt = (electionId, voterId, weight) => {
     initJwt();
     let claims = {
         iss: "https://netvote.io/",
         sub: hmacVoterId(electionId + ":" + voterId),
-        scope: electionId
+        scope: electionId,
+        weight: weight+""
     };
     let jwt = nJwt.create(claims, voteTokenSecret);
     jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
     return jwt.compact();
+};
+
+const createVoterJwt = (electionId, voterId) => {
+    return createWeightedVoterJwt(electionId, voterId, 1);
 };
 
 const encrypt = (text, electionId) => {
@@ -835,23 +891,35 @@ voterApp.post('/auth', voterIdCheck, (req, res) => {
     res.send({token: createVoterJwt(req.body.address, req.token)});
 });
 
+voterApp.post('/token/auth', tokenOwnerCheck, (req, res) => {
+    res.send({token: createWeightedVoterJwt(req.body.address, req.body.owner, req.weight)});
+});
+
 voterApp.post('/cast', voterTokenCheck, (req, res) => {
     initGateway();
     initCrypto();
     let encodedVote = req.body.vote;
-    let vote;
+    let voteObj;
+    let voteBuff;
     let encryptedVote;
     try {
-        vote = Buffer.from(encodedVote, 'base64');
+        voteBuff = Buffer.from(encodedVote, 'base64');
     } catch (e) {
         sendError(res, 400, 'must be valid base64 encoding');
         return;
     }
     let update = false;
-    if (!vote) {
+    if (!voteBuff) {
         sendError(res, 400, "vote is required");
     } else {
-        return validateVote(vote, req.pool).then((valid) => {
+        return decodeVote(voteBuff).then((v) => {
+            voteObj = v;
+            voteObj.weight = req.weight;
+            voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
+            return validateVote(voteObj, req.pool)
+        }).then((valid) => {
+            return encodeVote(voteObj);
+        }).then((vote) => {
             let voteId = "";
             const passphrase = req.body.passphrase ? req.body.passphrase : "none";
             getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
@@ -880,6 +948,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 sendError(res, 500, e.message)
             });
         }).catch((errorText) => {
+            console.error(errorText);
             sendError(res, 400, errorText);
         });
     }
@@ -889,19 +958,27 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
     initGateway();
     initCrypto();
     let encodedVote = req.body.vote;
-    let vote;
+    let voteBuff;
+    let voteObj;
     try {
-        vote = Buffer.from(encodedVote, 'base64');
+        voteBuff = Buffer.from(encodedVote, 'base64');
     } catch (e) {
         sendError(res, 400, 'must be valid base64 encoding');
         return;
     }
-    if (!vote) {
+    if (!voteBuff) {
         sendError(res, 400, "vote is required");
     } else {
         return updatesAreAllowed(req.pool).then((allowed)=>{
             if(allowed) {
-                validateVote(vote, req.pool).then((valid) => {
+                return decodeVote(voteBuff).then((v) => {
+                    voteObj = v;
+                    voteObj.weight = req.weight;
+                    voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
+                    return validateVote(voteObj, req.pool)
+                }).then((valid) => {
+                    return encodeVote(voteObj);
+                }).then((vote) => {
                     let voteId = "";
                     getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
                         const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
