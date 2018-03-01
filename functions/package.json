@@ -9,7 +9,7 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
-    "@netvote/elections-solidity": "^1.0.13",
+    "@netvote/elections-solidity": "^1.0.14",
     "ajv": "^6.1.1",
     "cookie-parser": "^1.4.3",
     "cors": "^2.8.4",

@@ -187,9 +187,8 @@ const forbidden = (res) => {
 const authHeaderDecorator = (req, res, next) => {
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
         req.token = req.headers.authorization.split('Bearer ')[1];
-        return next();
     }
-    unauthorized(res);
+    return next();
 };
 
 // from https://github.com/firebase/functions-samples/blob/master/authorized-https-endpoint/functions/index.js
@@ -486,6 +485,7 @@ const voterIdCheck = (req, res, next) => {
 };
 
 const tokenOwnerCheck = (req, res, next) => {
+    initGateway();
     //TODO: check signature
     if(!req.body.owner){
         sendError(res, 400, "owner (address) is required");
@@ -501,7 +501,7 @@ const tokenOwnerCheck = (req, res, next) => {
         return ERC20.at(erc20address).balanceOf(req.body.owner)
     }).then((bal) => {
         if(bal.toNumber() === 0){
-            sendError(res, 400, "This account has no balance on token "+erc20address);
+            sendError(res, 400, "This account has no balance on token");
         }else{
             req.weight = ""+web3.fromWei(bal.toNumber(), 'ether');
             return next();
@@ -511,15 +511,18 @@ const tokenOwnerCheck = (req, res, next) => {
 
 const voterTokenCheck = (req, res, next) => {
     initJwt();
+    if(!req.token){
+        unauthorized(res);
+        return;
+    }
     nJwt.verify(req.token, voteTokenSecret, function (err, verifiedJwt) {
         if (err) {
             unauthorized(res);
         } else {
             req.voter = verifiedJwt.body.sub;
             req.pool = verifiedJwt.body.scope;
-            console.log("jwt weight = "+verifiedJwt.body.weight);
             req.weight = verifiedJwt.body.weight;
-            let w = parseFloat(verifiedJwt.body.weight)
+            let w = parseFloat(verifiedJwt.body.weight);
             if(isNaN(w)){
                 req.weight = "1.0";
             }
@@ -752,13 +755,54 @@ adminApp.post('/election', (req, res) => {
         return;
     }
 
-    return submitCreateElectionTx(allowUpdates, isPublic, metadataLocation, autoActivate, req.user.uid).then((ref) => {
+    return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
+        type: "basic",
+        allowUpdates: allowUpdates,
+        isPublic: isPublic,
+        metadataLocation: metadataLocation,
+        autoActivate: autoActivate,
+        uid: req.user.uid
+    }).then((ref)=> {
         res.send({txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX});
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
+
+adminApp.post('/token/election', (req, res) => {
+    let isPublic = !!(req.body.isPublic);
+    let metadataLocation = req.body.metadataLocation;
+    let tokenAddress = req.body.tokenAddress;
+    let allowUpdates = !!(req.body.allowUpdates);
+    let autoActivate = !!(req.body.autoActivate);
+
+    if (!metadataLocation) {
+        sendError(res, 400, "metadataLocation is required");
+        return;
+    }
+
+    if (!tokenAddress) {
+        sendError(res, 400, "tokenAddress is required");
+        return;
+    }
+
+    return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
+        type: "token",
+        tokenAddress: tokenAddress,
+        allowUpdates: allowUpdates,
+        isPublic: isPublic,
+        metadataLocation: metadataLocation,
+        autoActivate: autoActivate,
+        uid: req.user.uid
+    }).then((ref)=> {
+        res.send({txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX});
+    }).catch((e) => {
+        console.error(e);
+        sendError(res, 500, e.message);
+    });
+});
+
 
 exports.electionClose = functions.firestore
     .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
@@ -813,16 +857,31 @@ exports.createElection = functions.firestore
         let addr = "";
         let tx = "";
         return gatewayNonce().then((nonce)=>{
-            return BasicElection.new(
-                web3.sha3(data.uid),
-                voteAddress,
-                gatewayAddress,
-                data.allowUpdates,
-                gatewayAddress,
-                data.metadataLocation,
-                gatewayAddress,
-                data.autoActivate,
-                {from: gatewayAddress})
+            if(data.type === "token"){
+                return TokenElection.new(
+                    web3.sha3(data.uid),
+                    voteAddress,
+                    gatewayAddress,
+                    data.allowUpdates,
+                    gatewayAddress,
+                    data.metadataLocation,
+                    gatewayAddress,
+                    data.autoActivate,
+                    data.tokenAddress,
+                    (new Date().getTime())/1000,
+                    {from: gatewayAddress})
+            }else {
+                return BasicElection.new(
+                    web3.sha3(data.uid),
+                    voteAddress,
+                    gatewayAddress,
+                    data.allowUpdates,
+                    gatewayAddress,
+                    data.metadataLocation,
+                    gatewayAddress,
+                    data.autoActivate,
+                    {from: gatewayAddress})
+            }
         }).then((el) => {
                 addr = el.address;
                 tx = el.transactionHash+"";
