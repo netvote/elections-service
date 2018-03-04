@@ -46,6 +46,11 @@ const voterIdHmacSecret = functions.config().netvote.secret.voteridhash;
 // for hmac-ing stored secrets
 const storageHashSecret = functions.config().netvote.secret.storagehash;
 
+// civic
+let civicCfg;
+let civicSip;
+let civicClient;
+
 // GATEWAY CONFIG
 const DEFAULT_GAS = 4512388;
 const DEFAULT_GAS_PRICE = 1000000000000;
@@ -80,6 +85,18 @@ let web3;
 let ipfs;
 
 let qr;
+
+const initCivic = () => {
+    if(!civicCfg) {
+        civicCfg = functions.config().netvote.civic;
+        civicSip = require('civic-sip-api');
+        civicClient = civicSip.newClient({
+            appId: civicCfg.appid,
+            prvKey: civicCfg.privatesigningkey,
+            appSecret: civicCfg.secret,
+        });
+    }
+};
 
 const initQr = () => {
     if(!qr) {
@@ -469,6 +486,29 @@ const uidAuthorized = (uid, electionId) => {
     });
 };
 
+const civicIdCheck = (req, res, next) => {
+    initCivic();
+    if(!req.body.address){
+        sendError(res, 400, "address (of election) is required");
+        return;
+    }
+    let civicJwt = req.token;
+    civicClient.exchangeCode(civicJwt)
+        .then((userData) => {
+            console.log('userData = ', JSON.stringify(userData, null, 4));
+            req.token = userData.userId;
+            isDemoElection(req.body.address).then((demo)=>{
+                if(!demo){
+                    return voterIdCheck(req, res, next);
+                }
+                return next();
+            });
+        }).catch((error) => {
+        console.log(error);
+        unauthorized(res);
+    });
+}
+
 const voterIdCheck = (req, res, next) => {
     let key = req.token;
     let address = req.body.address;
@@ -603,6 +643,18 @@ const inPhase = (address, phases) => {
             resolve(phases.indexOf(phase.toNumber()) > -1);
         });
     })
+};
+
+const sendQr = (address, voterId, res) => {
+    initQr();
+    let obj = {
+        "address": address,
+        "token": createVoterJwt(address, voterId)
+    };
+
+    let imageBytes = qr.imageSync(JSON.stringify(obj), { type: 'png' });
+    res.setHeader('Content-type', 'image/png');  //sent qr image to client side
+    res.send(Buffer.from(imageBytes).toString("base64"));
 };
 
 // DEMO APIs
@@ -948,6 +1000,41 @@ voterApp.use(authHeaderDecorator);
 
 voterApp.post('/auth', voterIdCheck, (req, res) => {
     res.send({token: createVoterJwt(req.body.address, req.token)});
+});
+
+voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
+    res.send({token: createVoterJwt(req.body.address, req.token)});
+});
+
+// returns QR
+voterApp.post('/qr/key', voterIdCheck, (req, res) => {
+    sendQr(req.body.address, req.token, res);
+});
+
+// returns QR
+voterApp.post('/qr/civic', civicIdCheck, (req, res) => {
+    sendQr(req.body.address, req.token, res);
+});
+
+// returns QR: only for demo, generates a voteId for convenience
+voterApp.get('/qr/generated/:address', (req, res) => {
+    initQr();
+    if (!req.params.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    return isDemoElection(req.params.address).then((allowed) => {
+        if (allowed) {
+            generateKeys("demo", req.params.address, 1).then((keys) => {
+                sendQr(req.params.address, keys[0], res);
+            }).catch((e) => {
+                console.error(e);
+                sendError(res, 500, e.message);
+            });
+        }else {
+            sendError(res, 403, req.params.address+" is not a demo election");
+        }
+    });
 });
 
 voterApp.post('/token/auth', tokenOwnerCheck, (req, res) => {
