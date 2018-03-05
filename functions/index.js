@@ -85,6 +85,7 @@ let web3;
 let ipfs;
 
 let qr;
+let Jimp;
 
 let uportCfg;
 let uportSigner;
@@ -118,6 +119,7 @@ const initCivic = () => {
 const initQr = () => {
     if(!qr) {
         qr = require('qr-image');
+        Jimp = require("jimp");
     }
 }
 
@@ -677,6 +679,7 @@ const inPhase = (address, phases) => {
     })
 };
 
+
 const sendQr = (address, voterId, res) => {
     initQr();
     let obj = {
@@ -685,6 +688,7 @@ const sendQr = (address, voterId, res) => {
     };
 
     let imageBytes = qr.imageSync(JSON.stringify(obj), { type: 'png' });
+
     res.send({
         auth: obj,
         qr: Buffer.from(imageBytes).toString("base64")
