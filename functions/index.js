@@ -685,8 +685,10 @@ const sendQr = (address, voterId, res) => {
     };
 
     let imageBytes = qr.imageSync(JSON.stringify(obj), { type: 'png' });
-    res.setHeader('Content-type', 'image/png');  //sent qr image to client side
-    res.send(Buffer.from(imageBytes).toString("base64"));
+    res.send({
+        auth: obj,
+        qr: Buffer.from(imageBytes).toString("base64")
+    });
 };
 
 // DEMO APIs

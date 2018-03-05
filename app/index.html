@@ -47,6 +47,7 @@
 
 	<div id="loader" class="loader"></div>
 	<img style="display:none" src="nope.jpg" id="qr"/>
+	<div id="netvoteUrl" style="display:none"></div>
 <div id="startOver" style="display:none">
 	<a href="/" style="font-size: 24px">Start Over</a>
 </div>
@@ -113,6 +114,14 @@
       console.log('   Error message = ' + error.message);
    });
 
+   var displayAuthResult = function(data) {
+       $("#qr").attr("src", "data:image/png;base64," + data.qr).show();
+       var netvoteUrl = "netvote://"+ELECTION_ADDRESS+"/"+data.auth.token;
+       $("#netvoteUrl").html(`<a href="${netvoteUrl}">${netvoteUrl}</a>`).show();
+       $("#loader").hide();
+       $("#startOver").show();
+   };
+
    var sendCivicAuthCode = function (token) {
        $("#loader").show();
        $("#buttons").hide();
@@ -126,12 +135,8 @@
             headers: {
                 Authorization: 'Bearer '+token
             },
-            dataType: 'text',
-            success: function (data) {
-                $("#qr").attr("src", "data:image/png;base64," + data).show();
-                $("#loader").hide();
-                $("#startOver").show();
-            }
+            dataType: 'json',
+            success: displayAuthResult
       });
    };
 
@@ -147,12 +152,8 @@
            headers: {
                Authorization: 'Bearer '+token
            },
-           dataType: 'text',
-           success: function (data) {
-               $("#qr").attr("src", "data:image/png;base64," + data).show();
-               $("#loader").hide();
-               $("#startOver").show();
-           }
+           dataType: 'json',
+           success: displayAuthResult
        });
    }
 
@@ -163,12 +164,8 @@
 	  $.ajax({
 		  url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/generated/'+ELECTION_ADDRESS,
 		  type: 'GET',
-		  dataType: 'text',
-		  success: function (data) {
-			  $("#qr").attr("src", "data:image/png;base64," + data).show();
-              $("#loader").hide();
-              $("#startOver").show();
-		  }
+		  dataType: 'json',
+		  success: displayAuthResult
 	  });
   };
 
