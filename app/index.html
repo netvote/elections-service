@@ -31,7 +31,7 @@
 
 </head>
 <body>
-<div>
+<div id="buttons">
 	<button id="civicButton" class="civic-button-a medium" type="button">
 		<span>Log in with Civic</span>
 	</button>
@@ -44,9 +44,12 @@
 		<span>Generate Demo QR</span>
 	</button>
 </div>
+
 	<div id="loader" class="loader"></div>
 	<img style="display:none" src="nope.jpg" id="qr"/>
-
+<div id="startOver" style="display:none">
+	<a href="/" style="font-size: 24px">Start Over</a>
+</div>
 	<script>
 
 		var ELECTION_ADDRESS = "0x520a7cba19762b8beee8462a7fb6b0dbce464d8d";
@@ -60,26 +63,13 @@
       var uPortButton = document.querySelector("#uPortButton");
       uPortButton.addEventListener('click', function () {
           $("#loader").show();
+          $("#buttons").hide();
           $("#qr").hide();
           var topic = uport.topicFactory('access_token');
           $.getJSON( `https://us-central1-netvote1.cloudfunctions.net/vote/uport/request?callbackUrl=${encodeURIComponent(topic.url)}`, function( data ) {
 			  var uri = `https://id.uport.me/me?requestToken=${encodeURIComponent(data.requestToken)}`;
               uport.request({uri, topic}).then(token => {
-                  $.ajax({
-                      url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/uport',
-                      type: 'post',
-                      data: {
-                          address: ELECTION_ADDRESS
-                      },
-                      headers: {
-                          Authorization: 'Bearer '+token
-                      },
-                      dataType: 'text',
-                      success: function (data) {
-                          $("#qr").attr("src", "data:image/png;base64," + data).show();
-                          $("#loader").hide();
-                      }
-                  });
+                  sendUPortAuthToken(token);
               });
 		  });
       });
@@ -125,6 +115,7 @@
 
    var sendCivicAuthCode = function (token) {
        $("#loader").show();
+       $("#buttons").hide();
        $("#qr").hide();
       $.ajax({
             url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/civic',
@@ -139,12 +130,35 @@
             success: function (data) {
                 $("#qr").attr("src", "data:image/png;base64," + data).show();
                 $("#loader").hide();
+                $("#startOver").show();
             }
       });
    };
 
+   var sendUPortAuthToken = function(token) {
+       $("#loader").show();
+       $("#buttons").hide();
+       $.ajax({
+           url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/uport',
+           type: 'post',
+           data: {
+               address: ELECTION_ADDRESS
+           },
+           headers: {
+               Authorization: 'Bearer '+token
+           },
+           dataType: 'text',
+           success: function (data) {
+               $("#qr").attr("src", "data:image/png;base64," + data).show();
+               $("#loader").hide();
+               $("#startOver").show();
+           }
+       });
+   }
+
   var sendGenerateAuthCode = function () {
       $("#loader").show();
+      $("#buttons").hide();
       $("#qr").hide();
 	  $.ajax({
 		  url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/generated/'+ELECTION_ADDRESS,
@@ -153,9 +167,26 @@
 		  success: function (data) {
 			  $("#qr").attr("src", "data:image/png;base64," + data).show();
               $("#loader").hide();
+              $("#startOver").show();
 		  }
 	  });
   };
+
+   var getHashParam = function(name){
+       if(window.location.hash) {
+           var index = window.location.hash.indexOf(name+"=");
+           if (index > -1) {
+               return window.location.hash.substring(index+((name+"=").length))
+           }
+       }
+	   return null
+   }
+
+   var uportToken = getHashParam("access_token");
+   if(uportToken){
+       sendUPortAuthToken(uportToken);
+   }
+
  });
 	</script>
 </body>
