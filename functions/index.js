@@ -86,6 +86,23 @@ let ipfs;
 
 let qr;
 
+let uportCfg;
+let uportSigner;
+let uportCredential;
+
+const initUPort = () => {
+    if(!uportCredential){
+        uportCfg = functions.config().netvote.uport;
+        const uport = require("uport");
+        uportSigner = uport.SimpleSigner(uportCfg.signingkey);
+        uportCredential = new uport.Credentials({
+            appName: uportCfg.appname,
+            address: uportCfg.clientid,
+            signer: uportSigner
+        })
+    }
+};
+
 const initCivic = () => {
     if(!civicCfg) {
         civicCfg = functions.config().netvote.civic;
@@ -486,6 +503,22 @@ const uidAuthorized = (uid, electionId) => {
     });
 };
 
+const uportIdCheck = (req, res, next) => {
+    initUPort();
+    uportCredential.receive(req.token).then((result)=>{
+        req.token = result.address;
+        isDemoElection(req.body.address).then((demo)=>{
+            if(!demo){
+                return voterIdCheck(req, res, next);
+            }
+            return next();
+        });
+    }).catch((err)=>{
+        console.error(err);
+        unauthorized(res);
+    });
+};
+
 const civicIdCheck = (req, res, next) => {
     initCivic();
     if(!req.body.address){
@@ -495,7 +528,6 @@ const civicIdCheck = (req, res, next) => {
     let civicJwt = req.token;
     civicClient.exchangeCode(civicJwt)
         .then((userData) => {
-            console.log('userData = ', JSON.stringify(userData, null, 4));
             req.token = userData.userId;
             isDemoElection(req.body.address).then((demo)=>{
                 if(!demo){
@@ -1014,6 +1046,21 @@ voterApp.post('/qr/key', voterIdCheck, (req, res) => {
 // returns QR
 voterApp.post('/qr/civic', civicIdCheck, (req, res) => {
     sendQr(req.body.address, req.token, res);
+});
+
+// returns QR
+voterApp.post('/qr/uport', uportIdCheck, (req, res) => {
+    sendQr(req.body.address, req.token, res);
+});
+
+voterApp.get('/uport/request', (req, res) => {
+    initUPort();
+    uportCredential.createRequest({
+        callbackUrl: req.query.callbackUrl,
+        exp: new Date().getTime() + 60000
+    }).then(requestToken => {
+        res.send({"requestToken": requestToken});
+    });
 });
 
 // returns QR: only for demo, generates a voteId for convenience
