@@ -710,13 +710,6 @@ const sendQrJwt = (address, voterId, res) => {
             resolve(true);
         });
     });
-/*
-    let imageBytes = qr.imageSync(JSON.stringify(obj), { type: 'png' });
-
-    res.send({
-        auth: obj,
-        qr: Buffer.from(imageBytes).toString("base64")
-    });*/
 };
 
 // DEMO APIs
@@ -1099,7 +1092,7 @@ voterApp.get('/qr/generated/:address', (req, res) => {
     return isDemoElection(req.params.address).then((allowed) => {
         if (allowed) {
             generateKeys("demo", req.params.address, 1).then((keys) => {
-                sendQr(req.params.address, keys[0], res);
+                sendQrJwt(req.params.address, keys[0], res);
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
