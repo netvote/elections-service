@@ -85,7 +85,6 @@ let web3;
 let ipfs;
 
 let qr;
-let Jimp;
 
 let uportCfg;
 let uportSigner;
@@ -119,7 +118,6 @@ const initCivic = () => {
 const initQr = () => {
     if(!qr) {
         qr = require('qr-image');
-        Jimp = require("jimp");
     }
 }
 

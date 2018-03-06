@@ -120,6 +120,7 @@
        $("#netvoteUrl").html(`<a href="${netvoteUrl}">${netvoteUrl}</a>`).show();
        $("#loader").hide();
        $("#startOver").show();
+       window.location.href=netvoteUrl;
    };
 
    var sendCivicAuthCode = function (token) {
