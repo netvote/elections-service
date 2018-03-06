@@ -115,7 +115,7 @@
    });
 
    var displayAuthResult = function(data) {
-       $("#qr").attr("src", "data:image/png;base64," + data.qr).show();
+       $("#qr").attr("src", data.qr).show();
        var netvoteUrl = "netvote://"+ELECTION_ADDRESS+"/"+data.auth.token;
        $("#netvoteUrl").html(`<a href="${netvoteUrl}">${netvoteUrl}</a>`).show();
        $("#loader").hide();

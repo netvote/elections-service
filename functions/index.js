@@ -84,7 +84,8 @@ let web3;
 
 let ipfs;
 
-let qr;
+let QRCode;
+
 
 let uportCfg;
 let uportSigner;
@@ -116,8 +117,8 @@ const initCivic = () => {
 };
 
 const initQr = () => {
-    if(!qr) {
-        qr = require('qr-image');
+    if(!QRCode) {
+        QRCode = require('qrcode');
     }
 }
 
@@ -677,20 +678,45 @@ const inPhase = (address, phases) => {
     })
 };
 
+const sendQr = (txt, res) => {
+    initQr();
+    res.setHeader('Content-type', 'image/png');
+    QRCode.toFileStream(res, txt, {
+        color:{
+            dark: "#0D364B",
+            light: "#ffffff"
+        }
+    });
+};
 
-const sendQr = (address, voterId, res) => {
+const sendQrJwt = (address, voterId, res) => {
     initQr();
     let obj = {
         "address": address,
         "token": createVoterJwt(address, voterId)
     };
 
+    return new Promise(function (resolve, reject) {
+        QRCode.toDataURL(JSON.stringify(obj), {
+            color:{
+                dark: "#0D364B",
+                light: "#ffffff"
+            }
+        }, function (err, url) {
+            res.send({
+                auth: obj,
+                qr: url
+            });
+            resolve(true);
+        });
+    });
+/*
     let imageBytes = qr.imageSync(JSON.stringify(obj), { type: 'png' });
 
     res.send({
         auth: obj,
         qr: Buffer.from(imageBytes).toString("base64")
-    });
+    });*/
 };
 
 // DEMO APIs
@@ -703,9 +729,7 @@ demoApp.get('/qr/election/:address', (req, res) => {
         sendError(res, 400, "address is required");
         return;
     }
-    let code = qr.image(req.params.address, { type: 'png' });
-    res.setHeader('Content-type', 'image/png');  //sent qr image to client side
-    code.pipe(res);
+    sendQr(req.params.address, res);
 })
 
 demoApp.get('/key/:address', (req, res) => {
@@ -736,9 +760,7 @@ demoApp.get('/qr/key/:address', (req, res) => {
     return isDemoElection(req.params.address).then((allowed) => {
         if (allowed) {
             generateKeys("demo", req.params.address, 1).then((keys) => {
-                let code = qr.image(keys[0], {type: 'png'});
-                res.setHeader('Content-type', 'image/png');  //sent qr image to client side
-                code.pipe(res);
+                sendQr(keys[0], res);
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
@@ -1044,17 +1066,17 @@ voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
 
 // returns QR
 voterApp.post('/qr/key', voterIdCheck, (req, res) => {
-    sendQr(req.body.address, req.token, res);
+    return sendQrJwt(req.body.address, req.token, res);
 });
 
 // returns QR
 voterApp.post('/qr/civic', civicIdCheck, (req, res) => {
-    sendQr(req.body.address, req.token, res);
+    return sendQrJwt(req.body.address, req.token, res);
 });
 
 // returns QR
 voterApp.post('/qr/uport', uportIdCheck, (req, res) => {
-    sendQr(req.body.address, req.token, res);
+    return sendQrJwt(req.body.address, req.token, res);
 });
 
 voterApp.get('/uport/request', (req, res) => {
