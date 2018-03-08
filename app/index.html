@@ -53,7 +53,30 @@
 </div>
 	<script>
 
-		var ELECTION_ADDRESS = "0x520a7cba19762b8beee8462a7fb6b0dbce464d8d";
+        var getUrlParam = function(name) {
+            var url = window.location.href;
+            name = name.replace(/[\[\]]/g, "\\$&");
+            var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+                results = regex.exec(url);
+            if (!results) return null;
+            if (!results[2]) return '';
+            return decodeURIComponent(results[2].replace(/\+/g, " "));
+        }
+
+        var getHashParam = function(name){
+            if(window.location.hash) {
+                var index = window.location.hash.indexOf(name+"=");
+                if (index > -1) {
+                    return window.location.hash.substring(index+((name+"=").length))
+                }
+            }
+            return null
+        };
+
+        var uportToken = getHashParam("access_token");
+
+		var elAddr = getUrlParam("election");
+		var ELECTION_ADDRESS = (elAddr) ? elAddr : "0x9b55476fb7db47b4330f0b6b78b9415f3420ce7c";
   $(document).ready(function () {
 
   var civicButton = document.querySelector('#civicButton');
@@ -170,17 +193,7 @@
 	  });
   };
 
-   var getHashParam = function(name){
-       if(window.location.hash) {
-           var index = window.location.hash.indexOf(name+"=");
-           if (index > -1) {
-               return window.location.hash.substring(index+((name+"=").length))
-           }
-       }
-	   return null
-   }
 
-   var uportToken = getHashParam("access_token");
    if(uportToken){
        sendUPortAuthToken(uportToken);
    }

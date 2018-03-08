@@ -1,6 +1,14 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
+
+admin.initializeApp({
+    credential: admin.credential.cert({
+        projectId: functions.config().netvote.admin.projectid,
+        clientEmail: functions.config().netvote.admin.clientemail,
+        privateKey: functions.config().netvote.admin.privatekey.replace(/\\n/g, '\n')
+    })
+});
+
 const cookieParser = require('cookie-parser');
 const express = require('express');
 const cors = require('cors');
@@ -1299,31 +1307,33 @@ const sendNotification = (regToken, text) => {
     });
 };
 
-exports.notifyCastVote = functions.firestore
-    .document(COLLECTION_VOTE_TX + '/{id}')
-    .onUpdate(event => {
-        let jobObj = event.data.data();
-        if(jobObj.pushToken){
-            if(jobObj.status === "complete"){
-                return sendNotification(jobObj.pushToken, jobObj.tx)
-            }else if(jobObj.status === "error"){
-                return sendNotification(jobObj.pushToken, "error")
-            }
-        }
-    });
+//TODO: enable when UI ready
+// exports.notifyCastVote = functions.firestore
+//     .document(COLLECTION_VOTE_TX + '/{id}')
+//     .onUpdate(event => {
+//         let jobObj = event.data.data();
+//         if(jobObj.pushToken){
+//             if(jobObj.status === "complete"){
+//                 return sendNotification(jobObj.pushToken, jobObj.tx)
+//             }else if(jobObj.status === "error"){
+//                 return sendNotification(jobObj.pushToken, "error")
+//             }
+//         }
+//     });
 
-exports.notifyUpdateVote = functions.firestore
-    .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
-    .onUpdate(event => {
-        let jobObj = event.data.data();
-        if(jobObj.pushToken){
-            if(jobObj.status === "complete"){
-                return sendNotification(jobObj.pushToken, jobObj.tx)
-            }else if(jobObj.status === "error"){
-                return sendNotification(jobObj.pushToken, "error")
-            }
-        }
-    });
+// enable later
+// exports.notifyUpdateVote = functions.firestore
+//     .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
+//     .onUpdate(event => {
+//         let jobObj = event.data.data();
+//         if(jobObj.pushToken){
+//             if(jobObj.status === "complete"){
+//                 return sendNotification(jobObj.pushToken, jobObj.tx)
+//             }else if(jobObj.status === "error"){
+//                 return sendNotification(jobObj.pushToken, "error")
+//             }
+//         }
+//     });
 
 
 exports.vote = functions.https.onRequest(voterApp);
