@@ -161,6 +161,27 @@ const initEth = () => {
     }
 };
 
+const atMostOnce = (collection, event) => {
+    return new Promise((resolve, reject) => {
+        let db = admin.firestore();
+        db.collection(collection).doc(event.params.id).get().then((doc) => {
+            if(!doc.exists) {
+                reject("invalid");
+                return;
+            }
+            if(doc.data().status){
+                reject("duplicate");
+                return;
+            }
+            event.data.ref.set({
+                status: "pending",
+            }, {merge: true}).then(()=>{
+                resolve(true);
+            });
+        });
+    })
+};
+
 const initGateway = () => {
     if (!BasicElection) {
         initEth();
@@ -225,6 +246,16 @@ const forbidden = (res) => {
     sendError(res, 403, "Forbidden");
 };
 
+const handleTxError = (evt, e) => {
+    console.error(e);
+    if(e === "duplicate"){
+        return true;
+    }
+    return evt.data.ref.set({
+        status: "error",
+        error: e.message
+    }, {merge: true});
+};
 
 // adds auth header to req.token for easy retrieval
 const authHeaderDecorator = (req, res, next) => {
@@ -920,7 +951,7 @@ exports.electionClose = functions.firestore
     .onCreate(event => {
         initGateway();
         let data = event.data.data();
-        return gatewayNonce().then((nonce)=>{
+        return atMostOnce(COLLECTION_CLOSE_ELECTION_TX, event).then(() => {
             return ElectionPhaseable.at(data.address).close({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
@@ -928,11 +959,7 @@ exports.electionClose = functions.firestore
                 status: "complete"
             }, {merge: true});
         }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
+            return handleTxError(event, e);
         });
     });
 
@@ -942,7 +969,7 @@ exports.electionActivate = functions.firestore
         initGateway();
         let data = event.data.data();
 
-        return gatewayNonce().then((nonce)=>{
+        return atMostOnce(COLLECTION_ACTIVATE_ELECTION_TX, event).then(() => {
             return ElectionPhaseable.at(data.address).activate({from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
@@ -950,11 +977,7 @@ exports.electionActivate = functions.firestore
                 status: "complete"
             }, {merge: true});
         }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
+            return handleTxError(event, e);
         });
     });
 
@@ -967,7 +990,7 @@ exports.createElection = functions.firestore
         let gatewayAddress = web3Provider.getAddress();
         let addr = "";
         let tx = "";
-        return gatewayNonce().then((nonce)=>{
+        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, event).then(() => {
             if(data.type === "token"){
                 return TokenElection.new(
                     web3.sha3(data.uid),
@@ -1019,11 +1042,7 @@ exports.createElection = functions.firestore
                 address: addr
             }, {merge: true});
         }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
+            return handleTxError(event, e);
         });
     });
 
@@ -1032,7 +1051,7 @@ exports.publishEncryption = functions.firestore
     .onCreate(event => {
         initGateway();
         let data = event.data.data();
-        return gatewayNonce().then((nonce)=>{
+        return atMostOnce(COLLECTION_ENCRYPTION_TX, event).then(() => {
             return BaseElection.at(data.address).setPrivateKey(data.key, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
@@ -1042,11 +1061,7 @@ exports.publishEncryption = functions.firestore
         }).then(() => {
             return (data.deleteHash) ? removeHashKey(data.address, COLLECTION_HASH_SECRETS) : null
         }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
+            return handleTxError(event, e);
         });
     });
 
@@ -1232,23 +1247,15 @@ exports.transferToken = functions.firestore
     .onCreate(event => {
         initGateway();
         let obj = event.data.data();
-        return Vote.at(voteAddress).balanceOf(obj.address).then((bal)=>{
-            if (bal.toNumber() > 0) {
-                console.warn("Election "+obj.address+" already had balance of "+bal.toNumber())
-            } else {
-                return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()}).then((tx) => {
-                    return event.data.ref.set({
-                        status: "complete",
-                        tx: tx.tx
-                    }, {merge: true});
-                }).catch((e) => {
-                    console.error(e);
-                    return event.data.ref.set({
-                        status: "error",
-                        error: "" + e.message
-                    }, {merge: true});
-                });
-            }
+        return atMostOnce(COLLECTION_TOKEN_TRANSFER_TX, event).then(() => {
+            return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()})
+        }).then((tx) => {
+            return event.data.ref.set({
+                status: "complete",
+                tx: tx.tx
+            }, {merge: true});
+        }).catch((e) => {
+            return handleTxError(event, e);
         });
     });
 
@@ -1257,7 +1264,7 @@ exports.castVote = functions.firestore
     .onCreate(event => {
         initGateway();
         let voteObj = event.data.data();
-        return gatewayNonce().then((nonce)=>{
+        return atMostOnce(COLLECTION_VOTE_TX, event).then(() => {
             return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
@@ -1266,11 +1273,7 @@ exports.castVote = functions.firestore
                 voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
+            return handleTxError(event, e);
         });
     });
 
@@ -1279,8 +1282,9 @@ exports.updateVote = functions.firestore
     .onCreate(event => {
         initGateway();
         let voteObj = event.data.data();
-        return gatewayNonce().then((nonce)=>{
-            return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
+
+        return atMostOnce(COLLECTION_UPDATE_VOTE_TX, event).then(() => {
+           return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -1288,14 +1292,9 @@ exports.updateVote = functions.firestore
                 voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
-            console.error(e);
-            return event.data.ref.set({
-                status: "error",
-                error: e.message
-            }, {merge: true});
+            return handleTxError(event, e);
         });
     });
-
 
 const sendNotification = (regToken, text) => {
     return admin.messaging().sendToDevice(regToken, {
