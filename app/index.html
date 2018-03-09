@@ -1,205 +1,285 @@
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-	<link rel="stylesheet" href="https://hosted-sip.civic.com/css/civic-modal.min.css">
-	<style>
-		.loader {
-			border: 8px solid #f3f3f3; /* Light grey */
-			border-top: 8px solid #3498db; /* Blue */
-			border-radius: 50%;
-			width: 30px;
-			height: 30px;
-			animation: spin 2s linear infinite;
-			display:none;
-		}
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+	<title>Netvote Demo</title>
 
-		@keyframes spin {
-			0% { transform: rotate(0deg); }
-			100% { transform: rotate(360deg); }
-		}
-	</style>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+	<meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
+    <meta name="viewport" content="width=device-width" />
+
+	<link rel="apple-touch-icon" sizes="76x76" href="assets/img/apple-icon.png" />
+	<link rel="icon" href="https://netvote.io/wp-content/uploads/2017/09/cropped-favicon-192x192.png" sizes="192x192" />
+
+	<!--     Fonts and icons     -->
+	<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Roboto+Slab:400,700|Material+Icons" />
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/latest/css/font-awesome.min.css" />
+
+	<!-- CSS Files -->
+	<link href="assets/css/bootstrap.min.css" rel="stylesheet" />
+	<link href="assets/css/material-bootstrap-wizard.css" rel="stylesheet" />
+
+	<!-- CSS Just for demo purpose, don't include it in your project -->
+	<link href="assets/css/demo.css" rel="stylesheet" />
+	<link rel="stylesheet" href="https://hosted-sip.civic.com/css/civic-modal.min.css">
 	<script src="https://hosted-sip.civic.com/js/civic.sip.min.js"></script>
-	<!-- The most recent version  -->
 	<script src="https://unpkg.com/uport-connect/dist/uport-connect.min.js"></script>
 
-	<script>
-	  var civicSip = new civic.sip({ appId: 'ryzLV3KOz' });
-      var uportconnect = window.uportconnect;
-      var uport = new uportconnect.Connect('Netvote Demo')
-	</script>
-
-
 </head>
+
 <body>
-<div id="buttons">
-	<button id="civicButton" class="civic-button-a medium" type="button">
-		<span>Log in with Civic</span>
-	</button>
-
-	<button id="uPortButton" class="civic-button-a medium" style="background-color: #5C58CA; text-transform : none;" type="button">
-		<span>Login with uPort</span>
-	</button>
-
-	<button id="demoButton"  class="civic-button-a medium" style="background-color: #333333; text-transform : none;" type="button">
-		<span>Generate Demo QR</span>
-	</button>
-</div>
-
-	<div id="loader" class="loader"></div>
-	<img style="display:none" src="nope.jpg" id="qr"/>
-	<div id="netvoteUrl" style="display:none"></div>
-<div id="startOver" style="display:none">
-	<a href="/" style="font-size: 24px">Start Over</a>
-</div>
-	<script>
-
-        var getUrlParam = function(name) {
-            var url = window.location.href;
-            name = name.replace(/[\[\]]/g, "\\$&");
-            var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
-                results = regex.exec(url);
-            if (!results) return null;
-            if (!results[2]) return '';
-            return decodeURIComponent(results[2].replace(/\+/g, " "));
-        }
-
-        var getHashParam = function(name){
-            if(window.location.hash) {
-                var index = window.location.hash.indexOf(name+"=");
-                if (index > -1) {
-                    return window.location.hash.substring(index+((name+"=").length))
-                }
-            }
-            return null
-        };
-
-        var uportToken = getHashParam("access_token");
-
-		var elAddr = getUrlParam("election");
-		var ELECTION_ADDRESS = (elAddr) ? elAddr : "0x2781cb442c98bbecf37119b872913f1c39e0612d";
-  $(document).ready(function () {
-
-  var civicButton = document.querySelector('#civicButton');
-      civicButton.addEventListener('click', function () {
-    civicSip.signup({ style: 'popup', scopeRequest: civicSip.ScopeRequests.BASIC_SIGNUP });
-  });
-
-      var uPortButton = document.querySelector("#uPortButton");
-      uPortButton.addEventListener('click', function () {
-          $("#loader").show();
-          $("#buttons").hide();
-          $("#qr").hide();
-          var topic = uport.topicFactory('access_token');
-          $.getJSON( `https://us-central1-netvote1.cloudfunctions.net/vote/uport/request?callbackUrl=${encodeURIComponent(topic.url)}`, function( data ) {
-			  var uri = `https://id.uport.me/me?requestToken=${encodeURIComponent(data.requestToken)}`;
-              uport.request({uri, topic}).then(token => {
-                  sendUPortAuthToken(token);
-              });
-		  });
-      });
-
-  var demoButton = document.querySelector("#demoButton");
-  demoButton.addEventListener('click', function () {
-	  sendGenerateAuthCode();
-  });
-
-  // Listen for data
-  civicSip.on('auth-code-received', function (event) {
-    // encoded JWT Token is sent to the server
-    var jwtToken = event.response;
-
-    // Your function to pass JWT token to your server
-      sendCivicAuthCode(jwtToken);
-  });
-
-  civicSip.on('user-cancelled', function (event) {
-    /*
-        event:
-        {
-          event: "scoperequest:user-cancelled"
-        }
-    */
-   });
-
-  civicSip.on('read', function (event) {
-    /*
-        event:
-        {
-          event: "scoperequest:read"
-        }
-    */
-  });
-
-   // Error events.
-   civicSip.on('civic-sip-error', function (error) {
-      // handle error display if necessary.
-      console.log('   Error type = ' + error.type);
-      console.log('   Error message = ' + error.message);
-   });
-
-   var displayAuthResult = function(data) {
-       $("#qr").attr("src", data.qr).show();
-       var netvoteUrl = "netvote://"+ELECTION_ADDRESS+"/"+data.auth.token;
-       $("#netvoteUrl").html(`<a href="${netvoteUrl}">${netvoteUrl}</a>`).show();
-       $("#loader").hide();
-       $("#startOver").show();
-       window.location.href=netvoteUrl;
-   };
-
-   var sendCivicAuthCode = function (token) {
-       $("#loader").show();
-       $("#buttons").hide();
-       $("#qr").hide();
-      $.ajax({
-            url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/civic',
-            type: 'post',
-            data: {
-                address: ELECTION_ADDRESS
-            },
-            headers: {
-                Authorization: 'Bearer '+token
-            },
-            dataType: 'json',
-            success: displayAuthResult
-      });
-   };
-
-   var sendUPortAuthToken = function(token) {
-       $("#loader").show();
-       $("#buttons").hide();
-       $.ajax({
-           url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/uport',
-           type: 'post',
-           data: {
-               address: ELECTION_ADDRESS
-           },
-           headers: {
-               Authorization: 'Bearer '+token
-           },
-           dataType: 'json',
-           success: displayAuthResult
-       });
-   }
-
-  var sendGenerateAuthCode = function () {
-      $("#loader").show();
-      $("#buttons").hide();
-      $("#qr").hide();
-	  $.ajax({
-		  url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/generated/'+ELECTION_ADDRESS,
-		  type: 'GET',
-		  dataType: 'json',
-		  success: displayAuthResult
-	  });
-  };
+	<div class="image-container set-full-height" style="background-image: url('assets/img/wizard-book.jpg')">
 
 
-   if(uportToken){
-       sendUPortAuthToken(uportToken);
-   }
+	    <!--   Big container   -->
+	    <div class="container">
+	        <div class="row">
+		        <div class="col-sm-8 col-sm-offset-2">
+		            <!--      Wizard container        -->
+		            <div class="wizard-container">
+		                <div class="card wizard-card" data-color="red" id="wizard">
+		                    <form action="" method="">
+		                <!--        You can switch " data-color="blue" "  with one of the next bright colors: "green", "orange", "red", "purple"             -->
 
- });
-	</script>
+		                    	<div class="wizard-header">
+		                        	<h3 class="wizard-title">
+		                        		Netvote Demo Election
+		                        	</h3>
+									<h5>Cast a vote on the Netvote platform.</h5>
+		                    	</div>
+								<div class="wizard-navigation">
+									<ul>
+			                            <li><a href="#welcome" class="unclickable-tab" data-toggle="tab">Welcome</a></li>
+			                            <li><a href="#authenticate" class="unclickable-tab" data-toggle="tab">Authenticate</a></li>
+			                            <li><a href="#vote" class="unclickable-tab" data-toggle="tab">Vote</a></li>
+			                        </ul>
+								</div>
+
+		                        <div class="tab-content">
+									<div class="tab-pane container-fluid" id="welcome">
+										<h4 class="info-text">Let's go through a basic flow </h4>
+										<div class="row">
+											<div class="col-sm-10 col-sm-offset-1">
+												<div class="col-sm-4">
+													<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="This lets the election runner confirm your identity.">
+														<input type="radio" name="job" value="Design">
+														<div class="icon">
+															<i class="material-icons">face</i>
+														</div>
+														<h6>Authenticate</h6>
+													</div>
+												</div>
+												<div class="col-sm-4">
+													<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="This Voting QR is just for you.">
+														<input type="radio" name="job" value="Code">
+														<div class="icon">
+															<i class="material-icons">crop_free</i>
+														</div>
+														<h6>Scan</h6>
+													</div>
+												</div>
+												<div class="col-sm-4">
+													<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="Use our application to vote.">
+														<input type="radio" name="job" value="Code">
+														<div class="icon">
+															<i class="material-icons">phone_iphone</i>
+														</div>
+														<h6>Vote</h6>
+													</div>
+												</div>
+											</div>
+										</div>
+										<div class="row" style="text-align:center; padding-top: 12px;">
+											<div class="col-lg-12">
+												<input type='button' class='btn btn-next btn-fill btn-danger btn-wd' name='next' value='Click here to begin' />
+											</div>
+										</div>
+									</div>
+		                            <div class="tab-pane" id="authenticate">
+		                                <h4 class="info-text">Authenticate with an Identity Provider </h4>
+		                                <div class="row">
+		                                    <div class="col-sm-10 col-sm-offset-1">
+		                                        <div class="col-sm-4">
+		                                            <div class="choice" data-toggle="wizard-radio" rel="tooltip" title="Use your Civic ID to Vote.">
+														<input type='button' class='btn btn-fill btn-default btn-wd' style="background-color: #3ab03e" name='civic' id="civic" value='Civic' />
+														<h6>Login with Civic</h6>
+													</div>
+		                                        </div>
+		                                        <div class="col-sm-4">
+													<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="Use your uPort ID to Vote.">
+														<input type='button' class='btn btn-fill btn-default btn-wd' style="background-color: #5C58CA" name='uport' id="uport" value='uPort' />
+														<h6>Login with uPort</h6>
+													</div>
+		                                        </div>
+												<div class="col-sm-4">
+													<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="Generate an ID for the demo.">
+														<input type='button' class='btn btn-fill btn-danger btn-wd' name='generate' id="generate" value='Generate' />
+														<h6>Generate Demo ID</h6>
+													</div>
+		                                        </div>
+		                                    </div>
+		                                </div>
+		                            </div>
+		                            <div class="tab-pane" id="vote">
+										<h4 id="voteResult" class="info-text">Generating Secure QR</h4>
+										<div class="row">
+											<div class="col-lg-12" style="text-align:center">
+												<div id="loader" class="loader center-block"></div>
+												<img src="nope.jpg" style="display: none" id="qr"/>
+											</div>
+		                                </div>
+		                            </div>
+		                        </div>
+	                        	<!--<div class="wizard-footer">-->
+	                            	<!--<div class="pull-right">-->
+	                                    <!--<input type='button' class='btn btn-next btn-fill btn-danger btn-wd' name='next' value='Next' />-->
+	                                    <!--<input type='button' class='btn btn-finish btn-fill btn-danger btn-wd' name='finish' value='Finish' />-->
+	                                <!--</div>-->
+	                                <!--<div class="clearfix"></div>-->
+	                        	<!--</div>-->
+		                    </form>
+		                </div>
+		            </div> <!-- wizard container -->
+		        </div>
+	    	</div> <!-- row -->
+		</div> <!--  big container -->
+
+	    <div class="footer">
+	        <div class="container text-center">
+	             For our whitepaper, see <a href="https://netvote.io">https://netvote.io</a>
+	        </div>
+	    </div>
+	</div>
+
 </body>
+	<!--   Core JS Files   -->
+	<script src="assets/js/jquery-2.2.4.min.js" type="text/javascript"></script>
+	<script src="assets/js/bootstrap.min.js" type="text/javascript"></script>
+	<script src="assets/js/jquery.bootstrap.js" type="text/javascript"></script>
 
+	<!--  Plugin for the Wizard -->
+	<script src="assets/js/material-bootstrap-wizard.js"></script>
+
+	<!--  More information about jquery.validate here: http://jqueryvalidation.org/	 -->
+	<script src="assets/js/jquery.validate.min.js"></script>
+	<script src="https://hosted-sip.civic.com/js/civic.sip.min.js"></script>
+	<script>
+		var wizardInstance;
+        $(document).ready(function () {
+
+            var getUrlParam = function(name) {
+                var url = window.location.href;
+                name = name.replace(/[\[\]]/g, "\\$&");
+                var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+                    results = regex.exec(url);
+                if (!results) return null;
+                if (!results[2]) return '';
+                return decodeURIComponent(results[2].replace(/\+/g, " "));
+            }
+
+            var getHashParam = function(name){
+                if(window.location.hash) {
+                    var index = window.location.hash.indexOf(name+"=");
+                    if (index > -1) {
+                        return window.location.hash.substring(index+((name+"=").length))
+                    }
+                }
+                return null
+            };
+
+            var displayAuthResult = function(data) {
+                $("#loader").hide();
+                $("#voteResult").html("Scan this QR using the Netvote Mobile App");
+                $("#qr").attr("src", data.qr).show();
+            };
+
+            var uportToken = getHashParam("access_token");
+            var elAddr = getUrlParam("election");
+            var ELECTION_ADDRESS = (elAddr) ? elAddr : "0x2781cb442c98bbecf37119b872913f1c39e0612d";
+
+            var civicSip = new civic.sip({ appId: 'ryzLV3KOz' });
+            var uportconnect = window.uportconnect;
+            var uport = new uportconnect.Connect('Netvote Demo')
+
+			$("#civic").click(function(){
+                civicSip.signup({ style: 'popup', scopeRequest: civicSip.ScopeRequests.BASIC_SIGNUP });
+			});
+
+			$("#uport").click(function(){
+                var topic = uport.topicFactory('access_token');
+                $.getJSON( `https://us-central1-netvote1.cloudfunctions.net/vote/uport/request?callbackUrl=${encodeURIComponent(topic.url)}`, function( data ) {
+                    var uri = `https://id.uport.me/me?requestToken=${encodeURIComponent(data.requestToken)}`;
+                    uport.request({uri, topic}).then(token => {
+                        sendUPortAuthToken(token);
+                    });
+                });
+			})
+
+			$("#generate").click(function(){
+                sendGenerateAuthCode();
+			})
+
+            var sendCivicAuthCode = function (token) {
+                $("#loader").show();
+                wizardInstance.next();
+                $.ajax({
+                    url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/civic',
+                    type: 'post',
+                    data: {
+                        address: ELECTION_ADDRESS
+                    },
+                    headers: {
+                        Authorization: 'Bearer '+token
+                    },
+                    dataType: 'json',
+                    success: displayAuthResult
+                });
+            };
+
+            var sendUPortAuthToken = function(token) {
+                $("#loader").show();
+                wizardInstance.next();
+                $.ajax({
+                    url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/uport',
+                    type: 'post',
+                    data: {
+                        address: ELECTION_ADDRESS
+                    },
+                    headers: {
+                        Authorization: 'Bearer '+token
+                    },
+                    dataType: 'json',
+                    success: displayAuthResult
+                });
+            }
+
+            var sendGenerateAuthCode = function () {
+                $("#loader").show();
+                wizardInstance.next();
+                $.ajax({
+                    url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/generated/'+ELECTION_ADDRESS,
+                    type: 'GET',
+                    dataType: 'json',
+                    success: displayAuthResult
+                });
+            };
+
+            civicSip.on('auth-code-received', function (event) {
+                var jwtToken = event.response;
+                sendCivicAuthCode(jwtToken);
+            });
+
+            civicSip.on('user-cancelled', function (event) {
+            });
+
+            civicSip.on('read', function (event) {
+            });
+
+            if(uportToken){
+                sendUPortAuthToken(uportToken);
+            }
+
+        })
+
+	</script>
 </html>
