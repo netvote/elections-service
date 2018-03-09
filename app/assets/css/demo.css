@@ -25,9 +25,9 @@
     border: 8px solid #f3f3f3; /* Light grey */
     border-top: 8px solid #2C5062; /* Blue */
     border-radius: 50%;
-    width: 300px;
-    height: 300px;
-    animation: spin 3s linear infinite;
+    width: 200px;
+    height: 200px;
+    animation: spin 2s linear infinite;
     display:none;
 }
 
