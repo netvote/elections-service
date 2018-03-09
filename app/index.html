@@ -125,7 +125,7 @@
 										<div class="row">
 											<div class="col-lg-12" style="text-align:center">
 												<div id="loader" class="loader center-block"></div>
-												<img src="nope.jpg" style="display: none" id="qr"/>
+												<img src="nope.jpg" style="display: none; border: 3px dashed #2C5062" id="qr"/>
 											</div>
 		                                </div>
 		                            </div>
@@ -195,6 +195,7 @@
 
             var uportToken = getHashParam("access_token");
             var elAddr = getUrlParam("election");
+            var uuid = getUrlParam("uuid");
             var ELECTION_ADDRESS = (elAddr) ? elAddr : "0x2781cb442c98bbecf37119b872913f1c39e0612d";
 
             var civicSip = new civic.sip({ appId: 'ryzLV3KOz' });
@@ -275,7 +276,9 @@
             civicSip.on('read', function (event) {
             });
 
-            if(uportToken){
+            if(uuid){
+                wizardInstance.next();
+            } else if(uportToken){
                 sendUPortAuthToken(uportToken);
             }
 
