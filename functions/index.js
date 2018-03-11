@@ -70,6 +70,8 @@ const gasPrice = functions.config().netvote.eth.gasprice;
 const chainId = functions.config().netvote.eth.chainid;
 const voteAddress = functions.config().netvote.eth.voteaddress;
 
+const utilKey = functions.config().netvote.secret.utilkey;
+
 let uuid;
 
 let HDWalletProvider;
@@ -441,18 +443,9 @@ const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase, pushToke
     });
 };
 
-const submitCreateElectionTx = (allowUpdates, isPublic, metadataLocation, autoActivate, uid) => {
-    return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
-        allowUpdates: allowUpdates,
-        isPublic: isPublic,
-        metadataLocation: metadataLocation,
-        autoActivate: autoActivate,
-        uid: uid
-    });
-};
-
 const submitEthTransaction = (collection, obj) => {
     let db = admin.firestore();
+    obj.timestamp = new Date().getTime();
     return db.collection(collection).add(obj);
 };
 
@@ -621,6 +614,14 @@ const tokenOwnerCheck = (req, res, next) => {
     });
 };
 
+const utilKeyCheck = (req, res, next) => {
+    if(!req.token || req.token !== utilKey){
+        unauthorized(res);
+        return;
+    }
+    return next();
+};
+
 const voterTokenCheck = (req, res, next) => {
     initJwt();
     if(!req.token){
@@ -638,7 +639,7 @@ const voterTokenCheck = (req, res, next) => {
             if(isNaN(w)){
                 req.weight = "1.0";
             }
-            next();
+            return next();
         }
     });
 };
@@ -750,6 +751,79 @@ const sendQrJwt = (address, voterId, res) => {
         });
     });
 };
+
+
+const purgeOldTransactions = (db, collectionPath, minTime, batchSize) => {
+    let collectionRef = db.collection(collectionPath);
+    let query = collectionRef.where('timestamp', '<', minTime).orderBy('timestamp').limit(batchSize);
+
+    return new Promise((resolve, reject) => {
+        deleteQueryBatch(db, query, batchSize, resolve, reject);
+    });
+};
+
+const deleteQueryBatch = (db, query, batchSize, resolve, reject) => {
+    query.get()
+        .then((snapshot) => {
+            // When there are no documents left, we are done
+            if (snapshot.size === 0) {
+                return 0;
+            }
+
+            // Delete documents in a batch
+            let batch = db.batch();
+            snapshot.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+
+            return batch.commit().then(() => {
+                return snapshot.size;
+            });
+        }).then((numDeleted) => {
+        if (numDeleted === 0) {
+            resolve();
+            return;
+        }
+
+        // Recurse on the next process tick, to avoid
+        // exploding the stack.
+        process.nextTick(() => {
+            deleteQueryBatch(db, query, batchSize, resolve, reject);
+        });
+    })
+        .catch(reject);
+}
+
+
+const utilApp = express();
+utilApp.use(cors());
+utilApp.use(authHeaderDecorator);
+utilApp.use(utilKeyCheck);
+utilApp.delete('/:collection/expired', (req, res) => {
+    if (!req.params.collection) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    if(!req.params.collection.startsWith("transaction")){
+        sendError(res, 400, "only transaction collections are clearable");
+        return;
+    }
+
+    const collection = req.params.collection;
+    let db = admin.firestore();
+
+    //older than 1 week
+    const weekInMs = 7 * 24 * 60 * 60 * 1000;
+    const oneWeekAgo = new Date().getTime() - weekInMs;
+    setImmediate(()=> {
+        purgeOldTransactions(db, collection, oneWeekAgo, 1000).then(() => {
+            console.log("Cleared old transactions from " + collection);
+        });
+    });
+    res.send({status: "ok"});
+});
+
+exports.util = functions.https.onRequest(utilApp);
 
 // DEMO APIs
 const demoApp = express();
@@ -950,6 +1024,7 @@ exports.electionClose = functions.firestore
     .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Close Election: "+event.params.id);
         let data = event.data.data();
         return atMostOnce(COLLECTION_CLOSE_ELECTION_TX, event).then(() => {
             return ElectionPhaseable.at(data.address).close({from: web3Provider.getAddress()})
@@ -967,6 +1042,7 @@ exports.electionActivate = functions.firestore
     .document(COLLECTION_ACTIVATE_ELECTION_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Activate Election: "+event.params.id);
         let data = event.data.data();
 
         return atMostOnce(COLLECTION_ACTIVATE_ELECTION_TX, event).then(() => {
@@ -985,6 +1061,7 @@ exports.createElection = functions.firestore
     .document(COLLECTION_CREATE_ELECTION_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Create Election: "+event.params.id);
         let data = event.data.data();
 
         let gatewayAddress = web3Provider.getAddress();
@@ -1050,6 +1127,7 @@ exports.publishEncryption = functions.firestore
     .document(COLLECTION_ENCRYPTION_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Publish Encryption: "+event.params.id);
         let data = event.data.data();
         return atMostOnce(COLLECTION_ENCRYPTION_TX, event).then(() => {
             return BaseElection.at(data.address).setPrivateKey(data.key, {from: web3Provider.getAddress()})
@@ -1246,6 +1324,7 @@ exports.transferToken = functions.firestore
     .document(COLLECTION_TOKEN_TRANSFER_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Transfer Token: "+event.params.id);
         let obj = event.data.data();
         return atMostOnce(COLLECTION_TOKEN_TRANSFER_TX, event).then(() => {
             return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()})
@@ -1263,6 +1342,7 @@ exports.castVote = functions.firestore
     .document(COLLECTION_VOTE_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Cast Vote: "+event.params.id);
         let voteObj = event.data.data();
         return atMostOnce(COLLECTION_VOTE_TX, event).then(() => {
             return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
@@ -1281,6 +1361,7 @@ exports.updateVote = functions.firestore
     .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
     .onCreate(event => {
         initGateway();
+        console.log("Update Vote: "+event.params.id);
         let voteObj = event.data.data();
 
         return atMostOnce(COLLECTION_UPDATE_VOTE_TX, event).then(() => {
