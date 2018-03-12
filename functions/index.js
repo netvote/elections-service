@@ -650,9 +650,7 @@ const markJwtStatus = (key, status) => {
     let db = admin.firestore();
     return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
         status: status
-    }, {merge: true}).then(()=>{
-        return next();
-    });
+    }, {merge: true});
 };
 
 const createWeightedVoterJwt = (electionId, voterId, weight) => {
