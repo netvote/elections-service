@@ -36,6 +36,7 @@ const COLLECTION_CREATE_ELECTION_TX = "transactionCreateElection";
 const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
 const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
 const COLLECTION_TOKEN_TRANSFER_TX = "transactionTokenTransfer";
+const COLLECTION_JWT_TRANSACTION = "transactionJwt";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -635,12 +636,22 @@ const voterTokenCheck = (req, res, next) => {
             req.voter = verifiedJwt.body.sub;
             req.pool = verifiedJwt.body.scope;
             req.weight = verifiedJwt.body.weight;
+            req.tokenKey = verifiedJwt.body.jti+verifiedJwt.body.sub;
             let w = parseFloat(verifiedJwt.body.weight);
             if(isNaN(w)){
                 req.weight = "1.0";
             }
             return next();
         }
+    });
+};
+
+const markJwtStatus = (key, status) => {
+    let db = admin.firestore();
+    return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
+        status: status
+    }, {merge: true}).then(()=>{
+        return next();
     });
 };
 
@@ -654,7 +665,14 @@ const createWeightedVoterJwt = (electionId, voterId, weight) => {
     };
     let jwt = nJwt.create(claims, voteTokenSecret);
     jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
-    return jwt.compact();
+    let db = admin.firestore();
+    let key = jwt.body.jti+jwt.body.sub;
+    return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
+        status: "pending",
+        timestamp: new Date().getTime()
+    }).then(()=>{
+        return jwt.compact();
+    })
 };
 
 const createVoterJwt = (electionId, voterId) => {
@@ -731,25 +749,31 @@ const sendQr = (txt, res) => {
 
 const sendQrJwt = (address, voterId, res) => {
     initQr();
-    let obj = {
-        "address": address,
-        "token": createVoterJwt(address, voterId)
-    };
+    return createVoterJwt(address, voterId).then((tok)=>{
 
-    return new Promise(function (resolve, reject) {
-        QRCode.toDataURL(JSON.stringify(obj), {
-            color:{
-                dark: "#0D364B",
-                light: "#ffffff"
-            }
-        }, function (err, url) {
-            res.send({
-                auth: obj,
-                qr: url
+        let obj = {
+            "address": address,
+            "token": tok,
+            "callback": "https://us-central1-netvote1.cloudfunctions.net/vote/scan"
+        };
+
+        return new Promise(function (resolve, reject) {
+            QRCode.toDataURL(JSON.stringify(obj), {
+                color:{
+                    dark: "#0D364B",
+                    light: "#ffffff"
+                }
+            }, function (err, url) {
+                res.send({
+                    auth: obj,
+                    qr: url
+                });
+                resolve(true);
             });
-            resolve(true);
         });
-    });
+    })
+
+
 };
 
 
@@ -1151,11 +1175,15 @@ voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
 
 voterApp.post('/auth', voterIdCheck, (req, res) => {
-    res.send({token: createVoterJwt(req.body.address, req.token)});
+    return createVoterJwt(req.body.address, req.token).then((tok)=>{
+        res.send({token: tok});
+    })
 });
 
 voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
-    res.send({token: createVoterJwt(req.body.address, req.token)});
+    return createVoterJwt(req.body.address, req.token).then((tok)=>{
+        res.send({token: tok});
+    })
 });
 
 // returns QR
@@ -1205,7 +1233,15 @@ voterApp.get('/qr/generated/:address', (req, res) => {
 });
 
 voterApp.post('/token/auth', tokenOwnerCheck, (req, res) => {
-    res.send({token: createWeightedVoterJwt(req.body.address, req.body.owner, req.weight)});
+    createWeightedVoterJwt(req.body.address, req.body.owner, req.weight).then((tk)=>{
+        res.send({token: tk});
+    });
+});
+
+voterApp.post('/scan', voterTokenCheck, (req, res) => {
+    markJwtStatus(req.tokenKey, "scanned").then(()=>{
+        res.send({status: "ok"});
+    });
 });
 
 voterApp.post('/cast', voterTokenCheck, (req, res) => {
@@ -1255,7 +1291,9 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 }
             }).then((jobRef) => {
                 let voteCollection = (update) ? COLLECTION_UPDATE_VOTE_TX : COLLECTION_VOTE_TX;
-                res.send({txId: jobRef.id, collection: voteCollection});
+                markJwtStatus(req.tokenKey, "voted").then(()=> {
+                    res.send({txId: jobRef.id, collection: voteCollection});
+                })
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message)

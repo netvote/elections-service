@@ -54,5 +54,15 @@ service cloud.firestore {
         allow read: if true;
         allow write: if false;
     }
+
+    match /transactionTokenTransfer/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
+    match /transactionJwt/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
   }
 }
