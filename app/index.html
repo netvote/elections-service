@@ -136,6 +136,7 @@
 												</div>
 												<div class="hidden-xs">
 													<img class="hidden" style="border: 3px dashed #2C5062; width:300px; height:300px; margin-bottom:21px" id="qr"/>
+													<h4 id="tabletTxt">On a tablet? Tap the QR to open the Netvote Mobile App</h4>
 												</div>
 												<div class="hidden-md hidden-lg hidden-sm">
 													<input type='button' class='btn btn-fill btn-danger btn-wd hidden' name='electionRedirect' id="electionRedirect" value='Open Election on Device' />
@@ -232,6 +233,7 @@
                 $("#electionRedirect").addClass('hidden');
                 $("#desktopResult").addClass('hidden');
                 $("#phoneIcon").addClass('hidden');
+                $("#tabletTxt").addClass('hidden');
                 $("#mobileResult").addClass('hidden');
                 $("#qr").addClass('hidden');
                 $("#qrText").addClass('hidden');
@@ -268,7 +270,12 @@
                 $("#desktopResult").removeClass('hidden');
                 $("#mobileResult").removeClass('hidden');
 
-                $("#qr").attr("src", data.qr).removeClass('hidden');
+                $("#qr").attr("src", data.qr).click(function(){
+                    window.location.href = netvoteUrl;
+                }).removeClass('hidden');
+
+                $("#tabletTxt").removeClass('hidden');
+
                 $("#electionRedirect").click(function(){
                     window.location.href = netvoteUrl;
 				}).removeClass('hidden');
