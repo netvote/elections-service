@@ -540,7 +540,13 @@ const uidAuthorized = (uid, electionId) => {
 const uportIdCheck = (req, res, next) => {
     initUPort();
     uportCredential.receive(req.token).then((result)=>{
+        //console.log("uport="+JSON.stringify(result));
         req.token = result.address;
+        // if(result.pushToken && result.publicEncKey){
+        //     req.pushToken = result.pushToken;
+        //     req.publicEncKey = result.publicEncKey;
+        // }
+
         isDemoElection(req.body.address).then((demo)=>{
             if(!demo){
                 return voterIdCheck(req, res, next);
@@ -573,7 +579,7 @@ const civicIdCheck = (req, res, next) => {
         console.log(error);
         unauthorized(res);
     });
-}
+};
 
 const voterIdCheck = (req, res, next) => {
     let key = req.token;
@@ -745,7 +751,7 @@ const sendQr = (txt, res) => {
     });
 };
 
-const sendQrJwt = (address, voterId, res) => {
+const sendQrJwt = (address, voterId, pushToken, publicEncKey, res) => {
     initQr();
     return createVoterJwt(address, voterId).then((tok)=>{
 
@@ -754,6 +760,14 @@ const sendQrJwt = (address, voterId, res) => {
             "token": tok,
             "callback": "https://us-central1-netvote1.cloudfunctions.net/vote/scan"
         };
+
+        if(pushToken){
+            obj["pushToken"] = pushToken;
+        }
+
+        if(publicEncKey){
+            obj["publicEncKey"] = publicEncKey;
+        }
 
         return new Promise(function (resolve, reject) {
             QRCode.toDataURL(JSON.stringify(obj), {
@@ -851,6 +865,24 @@ exports.util = functions.https.onRequest(utilApp);
 const demoApp = express();
 demoApp.use(cors());
 demoApp.use(cookieParser());
+
+// demoApp.post('/uport/push', (req, res) => {
+//     initUPort();
+//     return uportCredential.attest({
+//         claim: {customClaim: 12345},
+//         exp: new Date().getTime() + 2592000000
+//     }).then(attestationJWT => {
+//             uportCredential.push(req.body.token, req.body.key, {
+//                 sub: "2ovBoD33teH15Xy1GdXsKFuoGy4sEes4DDM",
+//                 url: "me.uport:add?attestation=" + attestationJWT,
+//                 message: "This is a test"
+//             }).then(()=>{
+//                 res.send({status:"ok"});
+//             })
+//         }
+//     );
+// });
+
 demoApp.get('/qr/election/:address', (req, res) => {
     initQr();
     if (!req.params.address) {
@@ -1186,17 +1218,17 @@ voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
 
 // returns QR
 voterApp.post('/qr/key', voterIdCheck, (req, res) => {
-    return sendQrJwt(req.body.address, req.token, res);
+    return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
 });
 
 // returns QR
 voterApp.post('/qr/civic', civicIdCheck, (req, res) => {
-    return sendQrJwt(req.body.address, req.token, res);
+    return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
 });
 
 // returns QR
 voterApp.post('/qr/uport', uportIdCheck, (req, res) => {
-    return sendQrJwt(req.body.address, req.token, res);
+    return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
 });
 
 voterApp.get('/uport/request', (req, res) => {
@@ -1219,7 +1251,7 @@ voterApp.get('/qr/generated/:address', (req, res) => {
     return isDemoElection(req.params.address).then((allowed) => {
         if (allowed) {
             generateKeys("demo", req.params.address, 1).then((keys) => {
-                sendQrJwt(req.params.address, keys[0], res);
+                sendQrJwt(req.params.address, keys[0], undefined, undefined, res);
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
