@@ -424,23 +424,25 @@ const submitEncryptTx = (address, key, deleteHash) => {
     });
 };
 
-const submitVoteTx = (address, voteId, encryptedVote, passphrase, pushToken) => {
+const submitVoteTx = (address, voteId, encryptedVote, passphrase, pushToken, tokenId) => {
     return submitEthTransaction(COLLECTION_VOTE_TX, {
         address: address,
         voteId: voteId,
         encryptedVote: encryptedVote,
         passphrase: passphrase,
-        pushToken: pushToken
+        pushToken: pushToken,
+        tokenId: tokenId
     });
 };
 
-const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase, pushToken) => {
+const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase, pushToken, tokenId) => {
     return submitEthTransaction(COLLECTION_UPDATE_VOTE_TX, {
         address: address,
         voteId: voteId,
         encryptedVote: encryptedVote,
         passphrase: passphrase,
-        pushToken: pushToken
+        pushToken: pushToken,
+        tokenId: tokenId
     });
 };
 
@@ -1281,6 +1283,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     let voteObj;
     let voteBuff;
     let encryptedVote;
+    let tokenId;
     try {
         voteBuff = Buffer.from(encodedVote, 'base64');
     } catch (e) {
@@ -1304,6 +1307,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
             getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
                 const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
                 voteId = web3.sha3(voteIdHmac);
+                tokenId = web3.sha3(toHmac(req.tokenKey, secret));
                 return encrypt(vote, req.pool);
             }).then((encryptedPayload) => {
                 encryptedVote = encryptedPayload;
@@ -1313,11 +1317,12 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 if(req.body.pushToken){
                     pushToken = req.body.pushToken;
                 }
+
                 if(votedAlready){
                     update = true;
-                    return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken);
+                    return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken, tokenId);
                 }else{
-                    return submitVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken);
+                    return submitVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken, tokenId);
                 }
             }).then((jobRef) => {
                 let voteCollection = (update) ? COLLECTION_UPDATE_VOTE_TX : COLLECTION_VOTE_TX;
@@ -1361,9 +1366,11 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
                     return encodeVote(voteObj);
                 }).then((vote) => {
                     let voteId = "";
+                    let tokenId;
                     getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
                         const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
                         voteId = web3.sha3(voteIdHmac);
+                        tokenId = web3.sha3(toHmac(req.tokenKey, secret));
                         return encrypt(vote, req.pool);
                     }).then((encryptedVote) => {
                         let pushToken = "";
@@ -1371,7 +1378,7 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
                             pushToken = req.body.pushToken;
                         }
                         const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-                        return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken);
+                        return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken, tokenId);
                     }).then((jobRef) => {
                         res.send({txId: jobRef.id, collection: COLLECTION_UPDATE_VOTE_TX});
                     }).catch((e) => {
@@ -1413,7 +1420,7 @@ exports.castVote = functions.firestore
         console.log("Cast Vote: "+event.params.id);
         let voteObj = event.data.data();
         return atMostOnce(COLLECTION_VOTE_TX, event).then(() => {
-            return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
+            return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -1433,7 +1440,7 @@ exports.updateVote = functions.firestore
         let voteObj = event.data.data();
 
         return atMostOnce(COLLECTION_UPDATE_VOTE_TX, event).then(() => {
-           return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, {from: web3Provider.getAddress()})
+            return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {from: web3Provider.getAddress()})
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
