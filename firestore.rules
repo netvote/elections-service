@@ -9,6 +9,10 @@ service cloud.firestore {
         allow read, write: if false;
     }
 
+    match /nonceCounter/{id} {
+        allow read, write: if false;
+    }
+
     match /ballot/{id} {
         allow read, write: if true;
     }

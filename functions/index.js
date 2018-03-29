@@ -29,6 +29,7 @@ const COLLECTION_DEMO_ELECTIONS = "demoElections";
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
+const COLLECTION_NONCE_COUNTER = "nonceCounter";
 const COLLECTION_VOTE_TX = "transactionCastVote";
 const COLLECTION_UPDATE_VOTE_TX = "transactionUpdateVote";
 const COLLECTION_ENCRYPTION_TX = "transactionPublishKey";
@@ -165,24 +166,20 @@ const initEth = () => {
 };
 
 const atMostOnce = (collection, event) => {
-    return new Promise((resolve, reject) => {
-        let db = admin.firestore();
-        db.collection(collection).doc(event.params.id).get().then((doc) => {
+    let db = admin.firestore();
+    let txRef = db.collection(collection).doc(event.params.id);
+    return db.runTransaction((t) => {
+        return t.get(txRef).then((doc) => {
             if(!doc.exists) {
-                reject("invalid");
-                return;
+                throw "missing tx";
             }
             if(doc.data().status){
-                reject("duplicate");
-                return;
+                throw "duplicate";
             }
-            event.data.ref.set({
-                status: "pending",
-            }, {merge: true}).then(()=>{
-                resolve(true);
-            });
+            t.update(txRef, {status: "pending"});
+            return Promise.resolve(true);
         });
-    })
+    });
 };
 
 const initGateway = () => {
@@ -703,7 +700,28 @@ const updatesAreAllowed = (address) => {
     });
 };
 
+const adminNonce = () => {
+    //TODO: when we separate addresses we can do so here
+    return gatewayNonce();
+};
+
 const gatewayNonce = () => {
+    let db = admin.firestore();
+    let counterRef = db.collection(COLLECTION_NONCE_COUNTER).doc("gateway");
+
+    return db.runTransaction((t) => {
+        return t.get(counterRef).then((doc) => {
+            if (!doc.exists) {
+                throw "Counter does not exist!";
+            }
+            let newNonce = doc.data().nonce + 1;
+            t.update(counterRef, { nonce: newNonce });
+            return Promise.resolve(newNonce);
+        });
+    })
+};
+
+const web3GatewayNonce = () => {
     return new Promise(function (resolve, reject) {
         web3.eth.getTransactionCount(web3Provider.getAddress(), (err, res) => {
             resolve(res);
@@ -1083,7 +1101,9 @@ exports.electionClose = functions.firestore
         console.log("Close Election: "+event.params.id);
         let data = event.data.data();
         return atMostOnce(COLLECTION_CLOSE_ELECTION_TX, event).then(() => {
-            return ElectionPhaseable.at(data.address).close({from: web3Provider.getAddress()})
+            return adminNonce().then((nonce)=> {
+                return ElectionPhaseable.at(data.address).close({nonce: nonce, from: web3Provider.getAddress()})
+            });
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -1102,7 +1122,9 @@ exports.electionActivate = functions.firestore
         let data = event.data.data();
 
         return atMostOnce(COLLECTION_ACTIVATE_ELECTION_TX, event).then(() => {
-            return ElectionPhaseable.at(data.address).activate({from: web3Provider.getAddress()})
+            return adminNonce().then((nonce)=> {
+                return ElectionPhaseable.at(data.address).activate({nonce: nonce, from: web3Provider.getAddress()})
+            });
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -1124,31 +1146,33 @@ exports.createElection = functions.firestore
         let addr = "";
         let tx = "";
         return atMostOnce(COLLECTION_CREATE_ELECTION_TX, event).then(() => {
-            if(data.type === "token"){
-                return TokenElection.new(
-                    web3.sha3(data.uid),
-                    voteAddress,
-                    gatewayAddress,
-                    data.allowUpdates,
-                    gatewayAddress,
-                    data.metadataLocation,
-                    gatewayAddress,
-                    data.autoActivate,
-                    data.tokenAddress,
-                    (new Date().getTime())/1000,
-                    {from: gatewayAddress})
-            }else {
-                return BasicElection.new(
-                    web3.sha3(data.uid),
-                    voteAddress,
-                    gatewayAddress,
-                    data.allowUpdates,
-                    gatewayAddress,
-                    data.metadataLocation,
-                    gatewayAddress,
-                    data.autoActivate,
-                    {from: gatewayAddress})
-            }
+            return adminNonce().then((nonce)=>{
+                if(data.type === "token"){
+                    return TokenElection.new(
+                        web3.sha3(data.uid),
+                        voteAddress,
+                        gatewayAddress,
+                        data.allowUpdates,
+                        gatewayAddress,
+                        data.metadataLocation,
+                        gatewayAddress,
+                        data.autoActivate,
+                        data.tokenAddress,
+                        (new Date().getTime())/1000,
+                        {from: gatewayAddress, nonce: nonce})
+                }else {
+                    return BasicElection.new(
+                        web3.sha3(data.uid),
+                        voteAddress,
+                        gatewayAddress,
+                        data.allowUpdates,
+                        gatewayAddress,
+                        data.metadataLocation,
+                        gatewayAddress,
+                        data.autoActivate,
+                        {from: gatewayAddress, nonce: nonce})
+                }
+            })
         }).then((el) => {
                 addr = el.address;
                 tx = el.transactionHash+"";
@@ -1186,7 +1210,9 @@ exports.publishEncryption = functions.firestore
         console.log("Publish Encryption: "+event.params.id);
         let data = event.data.data();
         return atMostOnce(COLLECTION_ENCRYPTION_TX, event).then(() => {
-            return BaseElection.at(data.address).setPrivateKey(data.key, {from: web3Provider.getAddress()})
+            return adminNonce().then((nonce)=>{
+                return BaseElection.at(data.address).setPrivateKey(data.key, {nonce: nonce, from: web3Provider.getAddress()})
+            });
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -1402,7 +1428,9 @@ exports.transferToken = functions.firestore
         console.log("Transfer Token: "+event.params.id);
         let obj = event.data.data();
         return atMostOnce(COLLECTION_TOKEN_TRANSFER_TX, event).then(() => {
-            return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {from: web3Provider.getAddress()})
+            return adminNonce().then((nonce)=> {
+                return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {nonce: nonce, from: web3Provider.getAddress()})
+            });
         }).then((tx) => {
             return event.data.ref.set({
                 status: "complete",
@@ -1420,7 +1448,9 @@ exports.castVote = functions.firestore
         console.log("Cast Vote: "+event.params.id);
         let voteObj = event.data.data();
         return atMostOnce(COLLECTION_VOTE_TX, event).then(() => {
-            return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {from: web3Provider.getAddress()})
+            return gatewayNonce().then((nonce)=>{
+                return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: web3Provider.getAddress()})
+            })
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
@@ -1440,7 +1470,9 @@ exports.updateVote = functions.firestore
         let voteObj = event.data.data();
 
         return atMostOnce(COLLECTION_UPDATE_VOTE_TX, event).then(() => {
-            return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {from: web3Provider.getAddress()})
+            return gatewayNonce().then((nonce)=> {
+                return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: web3Provider.getAddress()})
+            });
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
