@@ -1107,7 +1107,8 @@ exports.electionClose = functions.firestore
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
-                status: "complete"
+                status: "complete",
+                completeTime: new Date().getTime()
             }, {merge: true});
         }).catch((e) => {
             return handleTxError(event, e);
@@ -1128,7 +1129,8 @@ exports.electionActivate = functions.firestore
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
-                status: "complete"
+                status: "complete",
+                completeTime: new Date().getTime()
             }, {merge: true});
         }).catch((e) => {
             return handleTxError(event, e);
@@ -1196,6 +1198,7 @@ exports.createElection = functions.firestore
             return event.data.ref.set({
                 tx: tx,
                 status: "complete",
+                completeTime: new Date().getTime(),
                 address: addr
             }, {merge: true});
         }).catch((e) => {
@@ -1216,7 +1219,8 @@ exports.publishEncryption = functions.firestore
         }).then((tx) => {
             return event.data.ref.set({
                 tx: tx.tx,
-                status: "complete"
+                status: "complete",
+                completeTime: new Date().getTime()
             }, {merge: true});
         }).then(() => {
             return (data.deleteHash) ? removeHashKey(data.address, COLLECTION_HASH_SECRETS) : null
@@ -1434,6 +1438,7 @@ exports.transferToken = functions.firestore
         }).then((tx) => {
             return event.data.ref.set({
                 status: "complete",
+                completeTime: new Date().getTime(),
                 tx: tx.tx
             }, {merge: true});
         }).catch((e) => {
@@ -1455,6 +1460,7 @@ exports.castVote = functions.firestore
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete",
+                completeTime: new Date().getTime(),
                 voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
@@ -1477,6 +1483,7 @@ exports.updateVote = functions.firestore
             return event.data.ref.set({
                 tx: tx.tx,
                 status: "complete",
+                completeTime: new Date().getTime(),
                 voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
@@ -1524,3 +1531,10 @@ const sendNotification = (regToken, text) => {
 
 
 exports.vote = functions.https.onRequest(voterApp);
+
+const api = express();
+api.use('/vote', voterApp);
+api.use('/admin', adminApp);
+api.use('/util', utilApp);
+api.use('/demo', demoApp);
+exports.api = functions.https.onRequest(api);

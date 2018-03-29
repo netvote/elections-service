@@ -9,6 +9,12 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {"source": "/vote/**", "function": "api"},
+      {"source": "/demo/**", "function": "api"},
+      {"source": "/admin/**", "function": "api"},
+      {"source": "/util/**", "function": "api"}
     ]
   }
 }

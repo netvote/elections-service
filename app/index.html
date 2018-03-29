@@ -200,7 +200,7 @@
 <script>
     var wizardInstance;
     $(document).ready(function () {
-
+		var NETVOTE_URL = "https://netvote1.firebaseapp.com";
         var unsubscribe;
 
         function parseJwt (token) {
@@ -301,7 +301,7 @@
         $("#uport").click(function(){
             var topic = uport.topicFactory('access_token');
             $.LoadingOverlay("show");
-            $.getJSON( `https://us-central1-netvote1.cloudfunctions.net/vote/uport/request?callbackUrl=${encodeURIComponent(topic.url)}`, function( data ) {
+            $.getJSON( `${NETVOTE_URL}/vote/uport/request?callbackUrl=${encodeURIComponent(topic.url)}`, function( data ) {
                 $.LoadingOverlay("hide");
                 var uri = `https://id.uport.me/me?requestToken=${encodeURIComponent(data.requestToken)}`;
                 uport.request({uri, topic}).then(token => {
@@ -318,7 +318,7 @@
             showLoading();
             wizardInstance.next();
             $.ajax({
-                url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/civic',
+                url: `${NETVOTE_URL}/vote/qr/civic`,
                 type: 'post',
                 data: {
                     address: ELECTION_ADDRESS
@@ -335,7 +335,7 @@
             showLoading();
             wizardInstance.next();
             $.ajax({
-                url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/uport',
+                url: `${NETVOTE_URL}/vote/qr/uport`,
                 type: 'post',
                 data: {
                     address: ELECTION_ADDRESS
@@ -352,7 +352,7 @@
             showLoading();
             wizardInstance.next();
             $.ajax({
-                url: 'https://us-central1-netvote1.cloudfunctions.net/vote/qr/generated/'+ELECTION_ADDRESS,
+                url: `${NETVOTE_URL}/vote/qr/generated/${ELECTION_ADDRESS}`,
                 type: 'GET',
                 dataType: 'json',
                 success: displayAuthResult
