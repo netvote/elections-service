@@ -165,9 +165,9 @@ const initEth = () => {
     }
 };
 
-const atMostOnce = (collection, event) => {
+const atMostOnce = (collection, id) => {
     let db = admin.firestore();
-    let txRef = db.collection(collection).doc(event.params.id);
+    let txRef = db.collection(collection).doc(id);
     return db.runTransaction((t) => {
         return t.get(txRef).then((doc) => {
             if(!doc.exists) {
@@ -246,12 +246,12 @@ const forbidden = (res) => {
     sendError(res, 403, "Forbidden");
 };
 
-const handleTxError = (evt, e) => {
+const handleTxError = (ref, e) => {
     console.error(e);
     if(e === "duplicate"){
         return true;
     }
-    return evt.data.ref.set({
+    return ref.set({
         status: "error",
         error: e.message
     }, {merge: true});
@@ -565,7 +565,7 @@ const civicIdCheck = (req, res, next) => {
         return;
     }
     let civicJwt = req.token;
-    civicClient.exchangeCode(civicJwt)
+    civicClient.exsnapCode(civicJwt)
         .then((userData) => {
             req.token = userData.userId;
             isDemoElection(req.body.address).then((demo)=>{
@@ -1096,58 +1096,57 @@ adminApp.post('/token/election', (req, res) => {
 
 exports.electionClose = functions.firestore
     .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Close Election: "+event.params.id);
-        let data = event.data.data();
-        return atMostOnce(COLLECTION_CLOSE_ELECTION_TX, event).then(() => {
+        console.log("Close Election: "+context.params.id);
+        let data = snap.data();
+        return atMostOnce(COLLECTION_CLOSE_ELECTION_TX, context.params.id).then(() => {
             return adminNonce().then((nonce)=> {
                 return ElectionPhaseable.at(data.address).close({nonce: nonce, from: web3Provider.getAddress()})
             });
         }).then((tx) => {
-            return event.data.ref.set({
+            return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime()
             }, {merge: true});
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
 exports.electionActivate = functions.firestore
     .document(COLLECTION_ACTIVATE_ELECTION_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Activate Election: "+event.params.id);
-        let data = event.data.data();
-
-        return atMostOnce(COLLECTION_ACTIVATE_ELECTION_TX, event).then(() => {
+        console.log("Close Election: "+context.params.id);
+        let data = snap.data();
+        return atMostOnce(COLLECTION_ACTIVATE_ELECTION_TX, context.params.id).then(() => {
             return adminNonce().then((nonce)=> {
                 return ElectionPhaseable.at(data.address).activate({nonce: nonce, from: web3Provider.getAddress()})
             });
         }).then((tx) => {
-            return event.data.ref.set({
+            return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime()
             }, {merge: true});
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
 exports.createElection = functions.firestore
     .document(COLLECTION_CREATE_ELECTION_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Create Election: "+event.params.id);
-        let data = event.data.data();
+        console.log("Create Election: "+ context.params.id);
+        let data = snap.data();
 
         let gatewayAddress = web3Provider.getAddress();
         let addr = "";
         let tx = "";
-        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, event).then(() => {
+        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, context.params.id).then(() => {
             return adminNonce().then((nonce)=>{
                 if(data.type === "token"){
                     return TokenElection.new(
@@ -1195,29 +1194,29 @@ exports.createElection = functions.firestore
                 address: addr
             });
         }).then(()=>{
-            return event.data.ref.set({
+            return snap.ref.set({
                 tx: tx,
                 status: "complete",
                 completeTime: new Date().getTime(),
                 address: addr
             }, {merge: true});
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
 exports.publishEncryption = functions.firestore
     .document(COLLECTION_ENCRYPTION_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Publish Encryption: "+event.params.id);
-        let data = event.data.data();
-        return atMostOnce(COLLECTION_ENCRYPTION_TX, event).then(() => {
+        console.log("Publish Encryption: "+context.params.id);
+        let data = snap.data();
+        return atMostOnce(COLLECTION_ENCRYPTION_TX, context.params.id).then(() => {
             return adminNonce().then((nonce)=>{
                 return BaseElection.at(data.address).setPrivateKey(data.key, {nonce: nonce, from: web3Provider.getAddress()})
             });
         }).then((tx) => {
-            return event.data.ref.set({
+            return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime()
@@ -1225,7 +1224,7 @@ exports.publishEncryption = functions.firestore
         }).then(() => {
             return (data.deleteHash) ? removeHashKey(data.address, COLLECTION_HASH_SECRETS) : null
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
@@ -1427,67 +1426,67 @@ voterApp.post('/update', voterTokenCheck, (req, res) => {
 
 exports.transferToken = functions.firestore
     .document(COLLECTION_TOKEN_TRANSFER_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Transfer Token: "+event.params.id);
-        let obj = event.data.data();
-        return atMostOnce(COLLECTION_TOKEN_TRANSFER_TX, event).then(() => {
+        console.log("Transfer Token: "+context.params.id);
+        let obj = snap.data();
+        return atMostOnce(COLLECTION_TOKEN_TRANSFER_TX, context.params.id).then(() => {
             return adminNonce().then((nonce)=> {
                 return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {nonce: nonce, from: web3Provider.getAddress()})
             });
         }).then((tx) => {
-            return event.data.ref.set({
+            return snap.ref.set({
                 status: "complete",
                 completeTime: new Date().getTime(),
                 tx: tx.tx
             }, {merge: true});
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
 exports.castVote = functions.firestore
     .document(COLLECTION_VOTE_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Cast Vote: "+event.params.id);
-        let voteObj = event.data.data();
-        return atMostOnce(COLLECTION_VOTE_TX, event).then(() => {
+        console.log("Cast Vote: "+context.params.id);
+        let voteObj = snap.data();
+        return atMostOnce(COLLECTION_VOTE_TX, context.params.id).then(() => {
             return gatewayNonce().then((nonce)=>{
                 return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: web3Provider.getAddress()})
             })
         }).then((tx) => {
-            return event.data.ref.set({
+            return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime(),
                 voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
 exports.updateVote = functions.firestore
     .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
-    .onCreate(event => {
+    .onCreate((snap, context) => {
         initGateway();
-        console.log("Update Vote: "+event.params.id);
-        let voteObj = event.data.data();
+        console.log("Update Vote: "+context.params.id);
+        let voteObj = snap.data();
 
-        return atMostOnce(COLLECTION_UPDATE_VOTE_TX, event).then(() => {
+        return atMostOnce(COLLECTION_UPDATE_VOTE_TX, context.params.id).then(() => {
             return gatewayNonce().then((nonce)=> {
                 return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: web3Provider.getAddress()})
             });
         }).then((tx) => {
-            return event.data.ref.set({
+            return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime(),
                 voteId: voteObj.voteId
             }, {merge: true});
         }).catch((e) => {
-            return handleTxError(event, e);
+            return handleTxError(snap.ref, e);
         });
     });
 
