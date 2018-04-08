@@ -1,4 +1,6 @@
 node_modules
 *.iml
 .idea
+key.json
 firebase-debug.log
+lambdas.zip

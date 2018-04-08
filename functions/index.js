@@ -9,6 +9,12 @@ admin.initializeApp({
     })
 });
 
+process.env.AWS_ACCESS_KEY_ID = functions.config().netvote.secret.awsaccesskey;
+process.env.AWS_SECRET_ACCESS_KEY = functions.config().netvote.secret.awssecretkey;
+const AWS = require('aws-sdk');
+AWS.config.update({region: 'us-east-1'});
+
+
 const cookieParser = require('cookie-parser');
 const express = require('express');
 const cors = require('cors');
@@ -653,9 +659,17 @@ const voterTokenCheck = (req, res, next) => {
 
 const markJwtStatus = (key, status) => {
     let db = admin.firestore();
-    return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
-        status: status
-    }, {merge: true});
+    let jwtRef = db.collection(COLLECTION_JWT_TRANSACTION).doc(key);
+
+    return db.runTransaction((t) => {
+        return t.get(jwtRef).then((doc) => {
+            if (!doc.exists) {
+                throw "JWT does not exist!";
+            }
+            t.update(jwtRef, { status: status });
+            return Promise.resolve();
+        });
+    });
 };
 
 const createWeightedVoterJwt = (electionId, voterId, weight) => {
@@ -821,12 +835,10 @@ const purgeOldTransactions = (db, collectionPath, minTime, batchSize) => {
 const deleteQueryBatch = (db, query, batchSize, resolve, reject) => {
     query.get()
         .then((snapshot) => {
-            // When there are no documents left, we are done
             if (snapshot.size === 0) {
                 return 0;
             }
 
-            // Delete documents in a batch
             let batch = db.batch();
             snapshot.docs.forEach((doc) => {
                 batch.delete(doc.ref);
@@ -836,13 +848,12 @@ const deleteQueryBatch = (db, query, batchSize, resolve, reject) => {
                 return snapshot.size;
             });
         }).then((numDeleted) => {
+
         if (numDeleted === 0) {
             resolve();
             return;
         }
 
-        // Recurse on the next process tick, to avoid
-        // exploding the stack.
         process.nextTick(() => {
             deleteQueryBatch(db, query, batchSize, resolve, reject);
         });
@@ -1320,6 +1331,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
         return;
     }
     let update = false;
+    let collection = COLLECTION_VOTE_TX;
     if (!voteBuff) {
         sendError(res, 400, "vote is required");
     } else {
@@ -1342,21 +1354,51 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 encryptedVote = encryptedPayload;
                 return votedAlready(req.pool, voteId)
             }).then((votedAlready)=>{
-                let pushToken = "";
-                if(req.body.pushToken){
-                    pushToken = req.body.pushToken;
-                }
+                update = votedAlready;
+                return gatewayNonce().then((nonce)=>{
+                    if(votedAlready){
+                        collection = COLLECTION_UPDATE_VOTE_TX
+                    }
+                    voteObj = {
+                        address: req.pool,
+                        update: update,
+                        nonce: nonce,
+                        voteId: voteId,
+                        encryptedVote: encryptedVote,
+                        passphrase: passphrase,
+                        tokenId: tokenId
+                    };
 
-                if(votedAlready){
-                    update = true;
-                    return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken, tokenId);
-                }else{
-                    return submitVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken, tokenId);
-                }
+                    return submitEthTransaction(collection, {
+                        voteId: voteId,
+                        status: "pending"
+                    });
+                });
             }).then((jobRef) => {
-                let voteCollection = (update) ? COLLECTION_UPDATE_VOTE_TX : COLLECTION_VOTE_TX;
+                console.log("jobRef="+jobRef.id)
+
                 markJwtStatus(req.tokenKey, "voted").then(()=> {
-                    res.send({txId: jobRef.id, collection: voteCollection});
+                    console.log("marked");
+                    const lambda = new AWS.Lambda({region: "us-east-1", apiVersion: '2015-03-31'});
+                    const lambdaParams = {
+                        FunctionName : 'netvote-cast-vote',
+                        InvocationType : 'Event',
+                        LogType : 'None',
+                        Payload: JSON.stringify({
+                            callback: collection+"/"+jobRef.id,
+                            vote: voteObj
+                        })
+                    };
+
+                    lambda.invoke(lambdaParams, (error, data)=>{
+                        if(error){
+                            handleTxError(jobRef, error);
+                        }else{
+                            console.log("invocation completed, data:"+JSON.stringify(data))
+                        }
+                    });
+
+                    res.send({txId: jobRef.id, collection: collection});
                 })
             }).catch((e) => {
                 console.error(e);
@@ -1366,61 +1408,6 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
             console.error(errorText);
             sendError(res, 400, errorText);
         });
-    }
-});
-
-voterApp.post('/update', voterTokenCheck, (req, res) => {
-    initGateway();
-    initCrypto();
-    let encodedVote = req.body.vote;
-    let voteBuff;
-    let voteObj;
-    try {
-        voteBuff = Buffer.from(encodedVote, 'base64');
-    } catch (e) {
-        sendError(res, 400, 'must be valid base64 encoding');
-        return;
-    }
-    if (!voteBuff) {
-        sendError(res, 400, "vote is required");
-    } else {
-        return updatesAreAllowed(req.pool).then((allowed)=>{
-            if(allowed) {
-                return decodeVote(voteBuff).then((v) => {
-                    voteObj = v;
-                    voteObj.weight = req.weight;
-                    voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
-                    return validateVote(voteObj, req.pool)
-                }).then((valid) => {
-                    return encodeVote(voteObj);
-                }).then((vote) => {
-                    let voteId = "";
-                    let tokenId;
-                    getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
-                        const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
-                        voteId = web3.sha3(voteIdHmac);
-                        tokenId = web3.sha3(toHmac(req.tokenKey, secret));
-                        return encrypt(vote, req.pool);
-                    }).then((encryptedVote) => {
-                        let pushToken = "";
-                        if(req.body.pushToken){
-                            pushToken = req.body.pushToken;
-                        }
-                        const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-                        return submitUpdateVoteTx(req.pool, voteId, encryptedVote, passphrase, pushToken, tokenId);
-                    }).then((jobRef) => {
-                        res.send({txId: jobRef.id, collection: COLLECTION_UPDATE_VOTE_TX});
-                    }).catch((e) => {
-                        console.error(e);
-                        sendError(res, 500, e.message)
-                    });
-                }).catch((errorText) => {
-                    sendError(res, 400, errorText);
-                });
-            }else{
-                sendError(res, 403, "This election may not update votes");
-            }
-        })
     }
 });
 
@@ -1444,89 +1431,6 @@ exports.transferToken = functions.firestore
             return handleTxError(snap.ref, e);
         });
     });
-
-exports.castVote = functions.firestore
-    .document(COLLECTION_VOTE_TX + '/{id}')
-    .onCreate((snap, context) => {
-        initGateway();
-        console.log("Cast Vote: "+context.params.id);
-        let voteObj = snap.data();
-        return atMostOnce(COLLECTION_VOTE_TX, context.params.id).then(() => {
-            return gatewayNonce().then((nonce)=>{
-                return BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: web3Provider.getAddress()})
-            })
-        }).then((tx) => {
-            return snap.ref.set({
-                tx: tx.tx,
-                status: "complete",
-                completeTime: new Date().getTime(),
-                voteId: voteObj.voteId
-            }, {merge: true});
-        }).catch((e) => {
-            return handleTxError(snap.ref, e);
-        });
-    });
-
-exports.updateVote = functions.firestore
-    .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
-    .onCreate((snap, context) => {
-        initGateway();
-        console.log("Update Vote: "+context.params.id);
-        let voteObj = snap.data();
-
-        return atMostOnce(COLLECTION_UPDATE_VOTE_TX, context.params.id).then(() => {
-            return gatewayNonce().then((nonce)=> {
-                return BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: web3Provider.getAddress()})
-            });
-        }).then((tx) => {
-            return snap.ref.set({
-                tx: tx.tx,
-                status: "complete",
-                completeTime: new Date().getTime(),
-                voteId: voteObj.voteId
-            }, {merge: true});
-        }).catch((e) => {
-            return handleTxError(snap.ref, e);
-        });
-    });
-
-const sendNotification = (regToken, text) => {
-    return admin.messaging().sendToDevice(regToken, {
-        notification: {
-            title: 'Vote Accepted',
-            body: text,
-            icon: 'https://netvote.io/wp-content/uploads/2017/09/cropped-favicon-32x32.png',
-        }
-    });
-};
-
-//TODO: enable when UI ready
-// exports.notifyCastVote = functions.firestore
-//     .document(COLLECTION_VOTE_TX + '/{id}')
-//     .onUpdate(event => {
-//         let jobObj = event.data.data();
-//         if(jobObj.pushToken){
-//             if(jobObj.status === "complete"){
-//                 return sendNotification(jobObj.pushToken, jobObj.tx)
-//             }else if(jobObj.status === "error"){
-//                 return sendNotification(jobObj.pushToken, "error")
-//             }
-//         }
-//     });
-
-// enable later
-// exports.notifyUpdateVote = functions.firestore
-//     .document(COLLECTION_UPDATE_VOTE_TX + '/{id}')
-//     .onUpdate(event => {
-//         let jobObj = event.data.data();
-//         if(jobObj.pushToken){
-//             if(jobObj.status === "complete"){
-//                 return sendNotification(jobObj.pushToken, jobObj.tx)
-//             }else if(jobObj.status === "error"){
-//                 return sendNotification(jobObj.pushToken, "error")
-//             }
-//         }
-//     });
 
 
 exports.vote = functions.https.onRequest(voterApp);

@@ -1,0 +1,28 @@
+{
+  "name": "gateway-lambdas",
+  "version": "1.0.0",
+  "description": "Ethereum integration gateway lambdas",
+  "main": "cast-vote.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/netvote/elections-service.git"
+  },
+  "author": "steven@netvote.io",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/netvote/elections-service/issues"
+  },
+  "homepage": "https://github.com/netvote/elections-service#readme",
+  "dependencies": {
+    "@netvote/elections-solidity": "^1.0.15",
+    "googleapis": "^28.1.0",
+    "request": "^2.85.0",
+    "request-promise": "^4.2.2",
+    "truffle-contract": "^3.0.4",
+    "truffle-hdwallet-provider": "0.0.3",
+    "web3": "^1.0.0-beta.33"
+  }
+}
