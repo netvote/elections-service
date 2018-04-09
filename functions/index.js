@@ -571,7 +571,7 @@ const civicIdCheck = (req, res, next) => {
         return;
     }
     let civicJwt = req.token;
-    civicClient.exsnapCode(civicJwt)
+    civicClient.exchangeCode(civicJwt)
         .then((userData) => {
             req.token = userData.userId;
             isDemoElection(req.body.address).then((demo)=>{
