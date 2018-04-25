@@ -32,6 +32,10 @@ const updateVote = async(voteObj) => {
 };
 
 const updateStatus = async(doc, status, txId) => {
+    if(!doc){
+        console.log("skipping updateStatus, no callback specified");
+	return;
+    }
     const key = require('./key.json');
     const jwtClient = new google.google.auth.JWT({
         email: key.client_email,

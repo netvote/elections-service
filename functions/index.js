@@ -34,6 +34,7 @@ const COLLECTION_DEMO_ELECTIONS = "demoElections";
 
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
+const COLLECTION_VOTER_PIN_HASH_SECRET = "voterPinHashSecrets";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
 const COLLECTION_NONCE_COUNTER = "nonceCounter";
 const COLLECTION_VOTE_TX = "transactionCastVote";
@@ -455,6 +456,27 @@ const submitEthTransaction = (collection, obj) => {
     return db.collection(collection).add(obj);
 };
 
+const getPins = (electionId, voterId) => {
+    let pins = {}
+    let db = admin.firestore();
+
+    return db.collection(COLLECTION_DEMO_ELECTIONS).doc(electionId).get().then((doc) => {
+        if (doc.exists) {
+            return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret) => {
+                if(doc.data().pin){
+                    pins.pin = toHmac(doc.data().pin, secret);
+                }
+                if(doc.data().decoyPin){
+                    pins.decoyPin = toHmac(doc.data().decoyPin, secret);
+                }
+                return pins;
+            })
+        } else {
+            return pins;
+        }
+    });
+}
+
 const isDemoElection = (electionId) => {
     return new Promise(function (resolve, reject) {
         let db = admin.firestore();
@@ -634,6 +656,22 @@ const utilKeyCheck = (req, res, next) => {
     return next();
 };
 
+const checkPin = (electionId, pin, pinHmac, decoyHmac) => {
+    let db = admin.firestore();
+    return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret)=>{
+        const hmac = toHmac(pin, secret);
+        if(hmac === pinHmac) {
+            // is not decoy
+            return false;
+        } else if(hmac === decoyHmac){
+            // is decoy
+            return true;
+        } else {
+            throw "invalid pin"
+        }
+    })
+};
+
 const voterTokenCheck = (req, res, next) => {
     initJwt();
     if(!req.token){
@@ -652,7 +690,21 @@ const voterTokenCheck = (req, res, next) => {
             if(isNaN(w)){
                 req.weight = "1.0";
             }
-            return next();
+            if(verifiedJwt.body.pin){
+                if(!req.body.pin){
+                    unauthorized(res);
+                    return;
+                }
+                checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verified.body.decoyPin).then((decoy)=>{
+                   req.decoy = decoy;
+                   next();
+                }).catch((e)=>{
+                    console.error(e);
+                    unauthorized(res);
+                });
+            }else {
+                return next();
+            }
         }
     });
 };
@@ -680,16 +732,25 @@ const createWeightedVoterJwt = (electionId, voterId, weight) => {
         scope: electionId,
         weight: weight+""
     };
-    let jwt = nJwt.create(claims, voteTokenSecret);
-    jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
-    let db = admin.firestore();
-    let key = jwt.body.jti+jwt.body.sub;
-    return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
-        status: "pending",
-        timestamp: new Date().getTime()
-    }).then(()=>{
-        return jwt.compact();
+    return getPins(electionId, voterId).then((pins) => {
+        if(pins.pin){
+            claims.pin = pins.pin;
+        }
+        if(pins.decoyPin){
+            claims.decoyPin = pins.decoyPin;
+        }
+        let jwt = nJwt.create(claims, voteTokenSecret);
+        jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
+        let db = admin.firestore();
+        let key = jwt.body.jti+jwt.body.sub;
+        return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
+            status: "pending",
+            timestamp: new Date().getTime()
+        }).then(()=>{
+            return jwt.compact();
+        })
     })
+    
 };
 
 const createVoterJwt = (electionId, voterId) => {
