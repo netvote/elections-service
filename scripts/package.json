@@ -1,0 +1,25 @@
+{
+  "name": "netvote-cli",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/netvote/elections-service.git"
+  },
+  "author": "Steven Landers",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/netvote/elections-service/issues"
+  },
+  "homepage": "https://github.com/netvote/elections-service#readme",
+  "dependencies": {
+    "@netvote/elections-solidity": "^1.0.15",
+    "https": "^1.0.0",
+    "protobufjs": "^6.8.6",
+    "webpack": "^4.6.0"
+  }
+}

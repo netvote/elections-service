@@ -695,7 +695,7 @@ const voterTokenCheck = (req, res, next) => {
                     unauthorized(res);
                     return;
                 }
-                checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verified.body.decoyPin).then((decoy)=>{
+                checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verifiedJwt.body.decoyPin).then((decoy)=>{
                    req.decoy = decoy;
                    next();
                 }).catch((e)=>{
@@ -1436,10 +1436,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                     });
                 });
             }).then((jobRef) => {
-                console.log("jobRef="+jobRef.id)
-
                 markJwtStatus(req.tokenKey, "voted").then(()=> {
-                    console.log("marked");
                     const lambda = new AWS.Lambda({region: "us-east-1", apiVersion: '2015-03-31'});
                     const lambdaParams = {
                         FunctionName : 'netvote-cast-vote',
