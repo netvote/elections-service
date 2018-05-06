@@ -96,22 +96,25 @@
 									</div>
 								</div>
 								<div class="tab-pane" id="authenticate">
-									<h4 class="info-text">Authenticate with an Identity Provider </h4>
+                                    <h4 id="allLoginTxt" class="info-text hidden">Authenticate with an Identity Provider</h4>
+                                    <h4 id="uportLoginTxt" class="info-text hidden">Click the button to login with uPort</h4>
+                                    <h4 id="civicLoginTxt" class="info-text hidden">Click the button to login with Civic</h4>
+                                    <h4 id="generateLoginTxt" class="info-text hidden">Click the button to generate an ID</h4>
 									<div class="row">
 										<div class="col-sm-10 col-sm-offset-1">
-											<div class="col-sm-4">
+											<div id="civicLogin" class="col-sm-4">
 												<div class="choice" title="Use your Civic ID to Vote.">
 													<input type='button' class='btn btn-fill btn-default btn-wd btn-block' style="background-color: #3ab03e" name='civic' id="civic" value='Civic' />
 													<h6>Login with Civic</h6>
 												</div>
 											</div>
-											<div class="col-sm-4">
+											<div id="uportLogin" class="col-sm-4">
 												<div class="choice" title="Use your uPort ID to Vote.">
 													<input type='button' class='btn btn-fill btn-default btn-wd btn-block' style="background-color: #5C58CA" name='uport' id="uport" value='uPort' />
 													<h6>Login with uPort</h6>
 												</div>
 											</div>
-											<div class="col-sm-4">
+											<div id="generateLogin" class="col-sm-4">
 												<div class="choice" title="Generate an ID for the demo.">
 													<input type='button' class='btn btn-fill btn-danger btn-wd btn-block' name='generate' id="generate" value='Generate' />
 													<h6>Generate Demo ID</h6>
@@ -229,6 +232,52 @@
             return null
         };
 
+        var showAllLoginButtons = function(){
+            $("#civicLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#uportLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#generateLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#civicLoginTxt").addClass("hidden");
+            $("#uportLoginTxt").addClass("hidden");
+            $("#generateLoginTxt").addClass("hidden");
+            $("#allLoginTxt").removeClass("hidden");
+        }
+
+        var showLoginButton = function(id) {
+            $(id).removeClass("hidden").addClass("col-sm-12").removeClass("col-sm-4");
+            $(id+"Txt").removeClass("hidden");
+        }
+
+        var hideLoginButton = function(id){
+            $(id).addClass("col-sm-4").addClass("hidden").removeClass("col-sm-12");
+            $(id+"Txt").addClass("hidden");
+        }
+
+        var initLoginButtons = function(authMode) {
+            switch(authMode){
+                case "uport":
+                    hideLoginButton("#civicLogin");
+                    hideLoginButton("#generateLogin");
+                    showLoginButton("#uportLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;
+                case "civic":
+                    hideLoginButton("#uportLogin");
+                    hideLoginButton("#generateLogin");
+                    showLoginButton("#civicLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;
+                case "generate":
+                    hideLoginButton("#civicLogin");
+                    hideLoginButton("#uportLogin");
+                    showLoginButton("#generateLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;
+                default:
+                    $("#allLoginTxt").removeClass("hidden");
+                    showAllLoginButtons();
+            }
+        }
+
         var showLoading = function() {
             $("#loader").show();
             $("#loadingText").removeClass('hidden');
@@ -287,8 +336,10 @@
 
         var uportToken = getHashParam("access_token");
         var elAddr = getUrlParam("election");
+        var auth = getUrlParam("auth");
         var uuid = getUrlParam("uuid");
         var ELECTION_ADDRESS = (elAddr) ? elAddr : "0xb055de68519c500eb4855dfa928cec037f30e7d5";
+        initLoginButtons(auth);
 
         var civicSip = new civic.sip({ appId: 'ryzLV3KOz' });
         var uportconnect = window.uportconnect;
