@@ -324,7 +324,7 @@ const ipfsLookup = (metadataLocation) => {
 const voteProto = () => {
     let protobuf = require("protobufjs");
     return new Promise((resolve, reject) => {
-        protobuf.load("./node_modules/@netvote/elections-solidity/protocol/vote.proto").then((rt) => {
+        protobuf.load("./vote.proto").then((rt) => {
             return rt.lookupType("netvote.Vote");
         }).then((tp) => {
             resolve(tp);
