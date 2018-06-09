@@ -281,11 +281,11 @@ const validateFirebaseIdToken = (req, res, next) => {
             'Authorization: Bearer <Firebase ID Token>',
             'or by passing a "__session" cookie.');
         //TODO: remove, this is just testing
-        req.user = {
+        /*req.user = {
             uid: "test123"
         };
-        return next();
-        //unauthorized(res);
+        return next();*/
+        unauthorized(res);
     }
 
     let idToken;
