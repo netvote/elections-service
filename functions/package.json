@@ -27,7 +27,10 @@
     "truffle-hdwallet-provider": "0.0.3",
     "uport": "^0.6.2",
     "uuid": "^3.2.1",
-    "web3": "^0.20.4"
+    "web3": "^0.20.4",
+    "eth-sig-util": "^1.4.2",
+    "ethereumjs-util": "^5.2.0",
+    "node-cache": "^4.2.0"
   },
   "private": true
 }
