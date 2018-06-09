@@ -1492,10 +1492,37 @@ exports.transferToken = functions.firestore
 
 
 exports.vote = functions.https.onRequest(voterApp);
+const ethApp = express();
+const EthereumAuth = require('./web3-auth');
+const ethAuth = new EthereumAuth();
+ethApp.use(cors());
+
+ethApp.post('/auth/:address', ethAuth, (req, res) => {
+    if (req.ethauth) {
+        res.send(req.ethauth);
+    } else {
+        sendError(res, 500, "error registering address")
+    }
+});
+
+ethApp.post('/auth/:unsigned/:signed', ethAuth, (req, res) => {
+    if (req.ethauth && req.ethauth.address) {
+        admin.auth().createCustomToken(req.ethauth.address)
+            .then((customToken) => {
+                return res.send(customToken);
+            })
+            .catch((error) => {
+                return res.status(400).send(error);
+            });
+    } else {
+        unauthorized(res)
+    }
+});
 
 const api = express();
 api.use('/vote', voterApp);
 api.use('/admin', adminApp);
 api.use('/util', utilApp);
 api.use('/demo', demoApp);
+api.use('/eth', ethApp);
 exports.api = functions.https.onRequest(api);
