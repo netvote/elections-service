@@ -1,13 +1,13 @@
-const NodeCache = require('node-cache');
+const functions = require('firebase-functions');
 const ethUtil = require('ethereumjs-util');
 const sigUtil = require('eth-sig-util');
-const uuidv4 = require('uuid/v4');
 const crypto = require('crypto');
+const admin = require('firebase-admin');
 
-const secret = uuidv4();
-let cache = new NodeCache({
-    stdTTL: 600
-});
+challengeHmacKey = functions.config().netvote.secret.challengehmackey;
+
+const COLLECTION_CHALLENGE_CACHE = "challengeCache"
+
 
 class EthereumAuth {
 
@@ -25,28 +25,33 @@ class EthereumAuth {
                 const address = req.params["address"];
                 if (ethUtil.isValidAddress(address)) {
                     req.ethauth = this.createChallenge(address);
+                    putChallenge(address, req.ethauth).then(()=>{
+                        console.log("EthereumAuth: challenge creation complete")
+                        next();
+                    })
+                } else {
+                    console.error("EthereumAuth: ethUtil.isValidAddress returned false for "+address)
                 }
-            }
+            } 
 
             if (req.params["unsigned"] && req.params["signed"]) {
-                const address = this.checkChallenge(
+                this.checkChallenge(
                     req.params["unsigned"],
                     req.params["signed"]
-                )
-                req.ethauth = {address: address};
-            }
+                ).then((address) => {
+                    req.ethauth = {address: address};
+                    console.log("EthereumAuth: returning address: "+address)
+                    next();
+                })
+            } 
 
-            next();
         }
     }
 
     createChallenge(address) {
-
         const hash = this.options.message;        
         var challenge = ethUtil.bufferToHex(new Buffer(hash, 'utf8'))
-        cache.set(address, challenge);
         return challenge;
-
     }
 
     checkChallenge(challenge, sig) {
@@ -55,17 +60,44 @@ class EthereumAuth {
             data: challenge,
             sig: sig
         });
-        
-        const storedChallenge = cache.get(address);
 
-        if (storedChallenge === challenge) {
-            cache.del(address);
-            return address;
-        }
+        let now = new Date().getTime();
 
-        return false;
+        return getChallenge(address, challenge).then((doc) => {
+            if (doc.exists) {
+                if (doc.data().expires > now) {
+                    return address;
+                } else {
+                    console.error("checkChallenge: challenge expired")
+                }
+            } else {
+                console.error("checkChallenge: doc not found (invalid challenge)")
+            }
+            return false;
+        })
     }
 }
+
+const putChallenge = (address, challenge) => {
+    let db = admin.firestore()
+    let now = new Date().getTime();
+    return db.collection(COLLECTION_CHALLENGE_CACHE).doc(toHmac(address+challenge)).set({
+        expires: (now + 60000),
+        timestamp: now  // for cache expiration
+    })
+}
+
+const getChallenge = (address, challenge) => {
+    let db = admin.firestore()
+    return db.collection(COLLECTION_CHALLENGE_CACHE).doc(address).get()
+}
+
+
+const toHmac = (value) => {
+    const hmac = crypto.createHmac('sha256', challengeHmacKey);
+    hmac.update(value);
+    return hmac.digest('hex');
+};
 
 
 module.exports = EthereumAuth;

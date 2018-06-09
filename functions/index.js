@@ -932,7 +932,7 @@ utilApp.delete('/:collection/expired', (req, res) => {
         sendError(res, 400, "address is required");
         return;
     }
-    if(!req.params.collection.startsWith("transaction")){
+    if(!req.params.collection.startsWith("transaction") || !req.params.collection.startsWith("challenge") ){
         sendError(res, 400, "only transaction collections are clearable");
         return;
     }
