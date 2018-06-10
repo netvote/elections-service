@@ -5,6 +5,10 @@ service cloud.firestore {
         allow read, write: if false;
     }
 
+    match /encryptionKeys/{id} {
+        allow read, write: if false;
+    }
+
     match /voterIds/{id} {
         allow read, write: if false;
     }

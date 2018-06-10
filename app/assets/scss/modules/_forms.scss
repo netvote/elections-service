@@ -1,0 +1,44 @@
+// Forms
+
+// Builder form
+// Set global due to Dynamic Forms scoping
+.#{$ns}builder{
+    
+    &__group{
+        position: relative;
+
+        [role="group"]{ // set by dynamic forms
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: rgb(221, 221, 221);
+        }
+    }
+
+    &__section-group{
+        margin-left: 0.5rem;
+       
+        [role="group"]{ // set by dynamic forms
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: #c7c7c7;
+        }
+    }
+
+    &__item-group{
+        margin-left: 0.5rem;
+
+        [role="group"]{ // set by dynamic forms
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: #a7a7a7;
+        }
+    }
+}
+
+.#{$ns}form-control{
+
+    &--file{
+        border-style: dashed;
+        padding: 1rem;
+    }
+}

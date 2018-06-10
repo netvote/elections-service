@@ -1,0 +1,33 @@
+// App SCSS Vars
+
+// ====== Netvote Custom ======
+
+// Namespace
+$ns:                        "nv-";
+
+// Colors
+$app-color-pri: #60BEBD;
+$app-color-sec: #0F374B;
+$app-color-ter: #3B5A6A;
+
+// ====== Bootstrap !default overrides ======
+$icon-font-path:  "../../../node_modules/open-iconic/font/fonts/";
+
+//
+// Color system
+//
+$primary: $app-color-pri;
+
+$theme-colors: (
+    primary: $primary,
+    secondary: $app-color-sec,
+    tertiary: $app-color-ter,
+    danger: #dc4554,
+    success: #23D18B
+);
+
+// Body
+//
+// Settings for the `<body>` element.
+$body-bg: #FAFCFD;
+$body-color: #666666;

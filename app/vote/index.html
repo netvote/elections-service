@@ -1,0 +1,434 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+	<title>Netvote Demo</title>
+
+	<meta content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0' name='viewport' />
+	<meta name="viewport" content="width=device-width" />
+
+	<link rel="icon" href="https://netvote.io/wp-content/uploads/2017/09/cropped-favicon-192x192.png" sizes="192x192" />
+
+	<!--     Fonts and icons     -->
+	<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Roboto+Slab:400,700|Material+Icons" />
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/latest/css/font-awesome.min.css" />
+
+	<!-- CSS Files -->
+	<link href="assets/css/bootstrap.min.css" rel="stylesheet" />
+	<link href="assets/css/material-bootstrap-wizard.css" rel="stylesheet" />
+
+	<!-- CSS Just for demo purpose, don't include it in your project -->
+	<link href="assets/css/demo.css" rel="stylesheet" />
+	<link rel="stylesheet" href="https://hosted-sip.civic.com/css/civic-modal.min.css">
+	<script src="https://hosted-sip.civic.com/js/civic.sip.min.js"></script>
+	<script src="https://unpkg.com/uport-connect/dist/uport-connect.min.js"></script>
+
+</head>
+
+<body>
+<div class="image-container set-full-height" style="background-attachment: fixed;background-image: url('assets/img/nv-globe-lg-4-opt.jpg')">
+
+
+	<!--   Big container   -->
+	<div class="container">
+		<div class="row">
+			<div class="col-sm-8 col-sm-offset-2">
+				<!--      Wizard container        -->
+				<div class="wizard-container">
+					<div class="card wizard-card" data-color="red" id="wizard">
+						<form action="" method="">
+							<!--        You can switch " data-color="blue" "  with one of the next bright colors: "green", "orange", "red", "purple"             -->
+
+							<div class="wizard-header">
+								<h3 class="wizard-title">
+									Netvote Demo Election
+								</h3>
+								<h5>Cast a vote on the Netvote platform.</h5>
+							</div>
+							<div class="wizard-navigation">
+								<ul>
+									<li><a href="#welcome" data-toggle="tab">Welcome</a></li>
+									<li><a href="#authenticate" data-toggle="tab">Authenticate</a></li>
+									<li><a href="#vote" id="voteTab" class="unclickable-tab" data-toggle="tab">Vote</a></li>
+								</ul>
+							</div>
+
+							<div class="tab-content">
+								<div class="tab-pane container-fluid" id="welcome">
+									<h4 class="info-text">Let's go through a basic flow </h4>
+									<div class="row">
+										<div class="col-sm-10 col-sm-offset-1">
+											<div class="col-sm-4">
+												<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="This lets the election runner confirm your identity.">
+													<input type="radio" name="job" value="Design">
+													<div class="icon">
+														<i class="material-icons">face</i>
+													</div>
+													<h6>Authenticate</h6>
+												</div>
+											</div>
+											<div class="col-sm-4">
+												<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="This Voting QR is just for you.">
+													<input type="radio" name="job" value="Code">
+													<div class="icon">
+														<i class="material-icons">crop_free</i>
+													</div>
+													<h6>Scan</h6>
+												</div>
+											</div>
+											<div class="col-sm-4">
+												<div class="choice" data-toggle="wizard-radio" rel="tooltip" title="Use our application to vote.">
+													<input type="radio" name="job" value="Code">
+													<div class="icon">
+														<i class="material-icons">phone_iphone</i>
+													</div>
+													<h6>Vote</h6>
+												</div>
+											</div>
+										</div>
+									</div>
+									<div class="row" style="text-align:center; padding-top: 24px;">
+										<div class="col-lg-12">
+											<input type='button' class='btn btn-next btn-fill btn-danger btn-wd' name='next' value='Click here to begin' />
+										</div>
+									</div>
+								</div>
+								<div class="tab-pane" id="authenticate">
+                                    <h4 id="allLoginTxt" class="info-text hidden">Authenticate with an Identity Provider</h4>
+                                    <h4 id="uportLoginTxt" class="info-text hidden">Click the button to login with uPort</h4>
+                                    <h4 id="civicLoginTxt" class="info-text hidden">Click the button to login with Civic</h4>
+                                    <h4 id="generateLoginTxt" class="info-text hidden">Click the button to generate an ID</h4>
+									<div class="row">
+										<div class="col-sm-10 col-sm-offset-1">
+											<div id="civicLogin" class="col-sm-4">
+												<div class="choice" title="Use your Civic ID to Vote.">
+													<input type='button' class='btn btn-fill btn-default btn-wd btn-block' style="background-color: #3ab03e" name='civic' id="civic" value='Civic' />
+													<h6>Login with Civic</h6>
+												</div>
+											</div>
+											<div id="uportLogin" class="col-sm-4">
+												<div class="choice" title="Use your uPort ID to Vote.">
+													<input type='button' class='btn btn-fill btn-default btn-wd btn-block' style="background-color: #5C58CA" name='uport' id="uport" value='uPort' />
+													<h6>Login with uPort</h6>
+												</div>
+											</div>
+											<div id="generateLogin" class="col-sm-4">
+												<div class="choice" title="Generate an ID for the demo.">
+													<input type='button' class='btn btn-fill btn-danger btn-wd btn-block' name='generate' id="generate" value='Generate' />
+													<h6>Generate Demo ID</h6>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+								<div class="tab-pane" id="vote">
+									<h4 id="loadingText" class="info-text">Generating Secure Credential</h4>
+									<h4 id="desktopResult" class="info-text hidden-xs hidden">Scan this QR using the Netvote Mobile App</h4>
+									<h4 id="qrText" class="info-text hidden-xs hidden">The Secure QR has been scanned</h4>
+									<h4 id="mobileResult" class="info-text hidden-md hidden-lg hidden-sm hidden">Secure mobile link is ready</h4>
+									<div class="row">
+										<div class="col-lg-12" style="text-align:center">
+											<div id="loader" class="loader center-block"></div>
+											<div id="phoneIcon" class="hidden hidden-xs choice" data-toggle="wizard-radio">
+												<input type="radio" name="job" value="Code">
+												<div class="icon">
+													<i class="material-icons">phone_iphone</i>
+												</div>
+												<h4 style="margin-top:40px;">Please continue in the Netvote Mobile App</h4>
+											</div>
+											<div class="hidden-xs">
+												<img class="hidden" style="border: 3px dashed #2C5062; width:300px; height:300px; margin-bottom:21px" id="qr"/>
+												<h4 id="tabletTxt">On a tablet? Tap the QR to open the Netvote Mobile App</h4>
+											</div>
+											<div class="hidden-md hidden-lg hidden-sm">
+												<input type='button' class='btn btn-fill btn-danger btn-wd hidden' name='electionRedirect' id="electionRedirect" value='Open Election on Device' />
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!--<div class="wizard-footer">-->
+							<!--<div class="pull-right">-->
+							<!--<input type='button' class='btn btn-next btn-fill btn-danger btn-wd' name='next' value='Next' />-->
+							<!--<input type='button' class='btn btn-finish btn-fill btn-danger btn-wd' name='finish' value='Finish' />-->
+							<!--</div>-->
+							<!--<div class="clearfix"></div>-->
+							<!--</div>-->
+						</form>
+					</div>
+				</div> <!-- wizard container -->
+			</div>
+		</div> <!-- row -->
+	</div> <!--  big container -->
+
+	<div class="footer">
+		<div class="container text-center">
+			For our whitepaper, see <a href="https://netvote.io">https://netvote.io</a>
+		</div>
+	</div>
+</div>
+
+</body>
+
+
+<script src="https://www.gstatic.com/firebasejs/4.11.0/firebase.js"></script>
+<script src="https://www.gstatic.com/firebasejs/4.11.0/firebase-firestore.js"></script>
+<script>
+    // Initialize Firebase
+    var config = {
+        apiKey: "AIzaSyCYwUBgD-jq6bgbKqvLi8zjtMbRLmStN4I",
+        authDomain: "netvote2.firebaseapp.com",
+        databaseURL: "https://netvote2.firebaseio.com",
+        projectId: "netvote2",
+        storageBucket: "netvote2.appspot.com",
+        messagingSenderId: "861498385067"
+    };
+    firebase.initializeApp(config);
+</script>
+
+<!--   Core JS Files   -->
+<script src="assets/js/jquery-2.2.4.min.js" type="text/javascript"></script>
+<script src="assets/js/bootstrap.min.js" type="text/javascript"></script>
+<script src="assets/js/jquery.bootstrap.js" type="text/javascript"></script>
+
+<!--  Plugin for the Wizard -->
+<script src="assets/js/material-bootstrap-wizard.js"></script>
+
+<!--  More information about jquery.validate here: http://jqueryvalidation.org/	 -->
+<script src="assets/js/jquery.validate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.0.2/dist/loadingoverlay.min.js"></script>
+<script src="https://hosted-sip.civic.com/js/civic.sip.min.js"></script>
+<script>
+    var wizardInstance;
+    $(document).ready(function () {
+		var NETVOTE_URL = "https://netvote2.firebaseapp.com";
+        var unsubscribe;
+
+        function parseJwt (token) {
+            var base64Url = token.split('.')[1];
+            var base64 = base64Url.replace('-', '+').replace('_', '/');
+            return JSON.parse(window.atob(base64));
+        };
+
+        var getUrlParam = function(name) {
+            var url = window.location.href;
+            name = name.replace(/[\[\]]/g, "\\$&");
+            var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+                results = regex.exec(url);
+            if (!results) return null;
+            if (!results[2]) return '';
+            return decodeURIComponent(results[2].replace(/\+/g, " "));
+        }
+
+        var getHashParam = function(name){
+            if(window.location.hash) {
+                var index = window.location.hash.indexOf(name+"=");
+                if (index > -1) {
+                    return window.location.hash.substring(index+((name+"=").length))
+                }
+            }
+            return null
+        };
+
+        var showAllLoginButtons = function(){
+            $("#civicLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#uportLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#generateLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#civicLoginTxt").addClass("hidden");
+            $("#uportLoginTxt").addClass("hidden");
+            $("#generateLoginTxt").addClass("hidden");
+            $("#allLoginTxt").removeClass("hidden");
+        }
+
+        var showLoginButton = function(id) {
+            $(id).removeClass("hidden").addClass("col-sm-12").removeClass("col-sm-4");
+            $(id+"Txt").removeClass("hidden");
+        }
+
+        var hideLoginButton = function(id){
+            $(id).addClass("col-sm-4").addClass("hidden").removeClass("col-sm-12");
+            $(id+"Txt").addClass("hidden");
+        }
+
+        var initLoginButtons = function(authMode) {
+            switch(authMode){
+                case "uport":
+                    hideLoginButton("#civicLogin");
+                    hideLoginButton("#generateLogin");
+                    showLoginButton("#uportLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;
+                case "civic":
+                    hideLoginButton("#uportLogin");
+                    hideLoginButton("#generateLogin");
+                    showLoginButton("#civicLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;
+                case "generate":
+                    hideLoginButton("#civicLogin");
+                    hideLoginButton("#uportLogin");
+                    showLoginButton("#generateLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;
+                default:
+                    $("#allLoginTxt").removeClass("hidden");
+                    showAllLoginButtons();
+            }
+        }
+
+        var showLoading = function() {
+            $("#loader").show();
+            $("#loadingText").removeClass('hidden');
+            $("#electionRedirect").addClass('hidden');
+            $("#desktopResult").addClass('hidden');
+            $("#phoneIcon").addClass('hidden');
+            $("#tabletTxt").addClass('hidden');
+            $("#mobileResult").addClass('hidden');
+            $("#qr").addClass('hidden');
+            $("#qrText").addClass('hidden');
+        };
+
+        var displayAuthResult = function(data) {
+            $("#loader").hide();
+            var netvoteUrl = "netvote://"+ELECTION_ADDRESS+"/"+data.auth.token;
+            var jwt = parseJwt(data.auth.token);
+            var key = jwt.jti+jwt.sub;
+
+            var db = firebase.firestore();
+            unsubscribe = db.collection("transactionJwt").doc(key)
+                .onSnapshot(function(doc) {
+                    switch(doc.data().status){
+                        case "scanned":
+                            $("#qr").addClass('hidden');
+                            $("#desktopResult").addClass('hidden');
+                            $("#tabletTxt").addClass('hidden');
+                            $("#qrText").removeClass('hidden');
+                            $("#phoneIcon").removeClass('hidden');
+                            unsubscribe();
+                            break;
+                        case "pending":
+                            console.log("waiting for scan")
+                            break;
+                        default:
+                            break;
+                    }
+                });
+
+
+            $("#voteTab").removeClass("unclickable-tab");
+            $("#loadingText").addClass('hidden');
+            $("#desktopResult").removeClass('hidden');
+            $("#mobileResult").removeClass('hidden');
+
+            $("#qr").attr("src", data.qr).click(function(){
+                window.location.href = netvoteUrl;
+            }).removeClass('hidden');
+
+            $("#tabletTxt").removeClass('hidden');
+
+            $("#electionRedirect").click(function(){
+                window.location.href = netvoteUrl;
+            }).removeClass('hidden');
+
+        };
+
+        var uportToken = getHashParam("access_token");
+        var elAddr = getUrlParam("election");
+        var auth = getUrlParam("auth");
+        var uuid = getUrlParam("uuid");
+        var ELECTION_ADDRESS = (elAddr) ? elAddr : "0xb055de68519c500eb4855dfa928cec037f30e7d5";
+        initLoginButtons(auth);
+
+        var civicSip = new civic.sip({ appId: 'ryzLV3KOz' });
+        var uportconnect = window.uportconnect;
+        var uport = new uportconnect.Connect('Netvote Demo')
+
+        $("#civic").click(function(){
+            civicSip.signup({ style: 'popup', scopeRequest: civicSip.ScopeRequests.BASIC_SIGNUP });
+        });
+
+        $("#uport").click(function(){
+            var topic = uport.topicFactory('access_token');
+            $.LoadingOverlay("show");
+            $.getJSON( `${NETVOTE_URL}/vote/uport/request?callbackUrl=${encodeURIComponent(topic.url)}`, function( data ) {
+                $.LoadingOverlay("hide");
+                var uri = `https://id.uport.me/me?requestToken=${encodeURIComponent(data.requestToken)}`;
+                uport.request({uri, topic}).then(token => {
+                    sendUPortAuthToken(token);
+                });
+            });
+        })
+
+        $("#generate").click(function(){
+            sendGenerateAuthCode();
+        })
+
+        var sendCivicAuthCode = function (token) {
+            showLoading();
+            wizardInstance.next();
+            $.ajax({
+                url: `${NETVOTE_URL}/vote/qr/civic`,
+                type: 'post',
+                data: {
+                    address: ELECTION_ADDRESS
+                },
+                headers: {
+                    Authorization: 'Bearer '+token
+                },
+                dataType: 'json',
+                success: displayAuthResult
+            });
+        };
+
+        var sendUPortAuthToken = function(token) {
+            showLoading();
+            wizardInstance.next();
+            $.ajax({
+                url: `${NETVOTE_URL}/vote/qr/uport`,
+                type: 'post',
+                data: {
+                    address: ELECTION_ADDRESS
+                },
+                headers: {
+                    Authorization: 'Bearer '+token
+                },
+                dataType: 'json',
+                success: displayAuthResult
+            });
+        }
+
+        var sendGenerateAuthCode = function () {
+            showLoading();
+            wizardInstance.next();
+            $.ajax({
+                url: `${NETVOTE_URL}/vote/qr/generated/${ELECTION_ADDRESS}`,
+                type: 'GET',
+                dataType: 'json',
+                success: displayAuthResult
+            });
+        };
+
+        civicSip.on('auth-code-received', function (event) {
+            var jwtToken = event.response;
+            sendCivicAuthCode(jwtToken);
+        });
+
+        civicSip.on('user-cancelled', function (event) {
+        });
+
+        civicSip.on('read', function (event) {
+        });
+
+        if(uuid){
+            wizardInstance.next();
+        } else if(uportToken){
+            wizardInstance.next();
+            sendUPortAuthToken(uportToken);
+        }
+
+    })
+
+</script>
+</html>

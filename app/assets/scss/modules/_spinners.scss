@@ -1,0 +1,120 @@
+// Spinners
+// Us in conjunction with angular-spinner lib: https://github.com/Chevtek/angular-spinners
+// Ex:
+// <spinner name="foo">
+//  <div class="nv-spinner  is-animating">
+//    <div class="nv-spinner__text">On way to the blockchain!</div>
+//    <div class="nv-spinner__anim"></div>
+//  </div>
+// </spinner>
+
+spinner{
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.#{$ns}spinner{
+
+  &.is-animating{
+  
+    .#{$ns}spinner__anim{
+      animation: nvSpinnerObj 1.25s infinite forwards;
+      
+      &:before{
+        animation: nvSpinnerDot 1.25s infinite forwards;
+      }
+      
+      &:after{
+        display: none;
+      }
+    }
+    
+    .#{$ns}spinner__text{
+      animation: nvSpinnerText 1.25s infinite forwards;
+    }
+  }
+  
+  &.is-successful{
+  
+    .#{$ns}spinner__anim{
+      border-color: #23D18B;
+    
+      &:before, &:after{
+        background-color: darken(#23D18B, 8%);
+      }
+        
+      &:before{
+        width: 12px;
+        border-radius: 0;
+      }
+
+      &:after{
+        border-radius: 0;
+        width: 30px;
+        transform: translate(-10px, -15px) rotate(90deg);
+      }
+    }
+  }
+    
+  &__anim, &__text{
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  &__anim{
+    position: relative;
+    height: 18px;
+    width: 18px;
+    margin: 0 0.25rem;
+    border: 2px solid #0F374B;
+    border-radius: 2px;
+    transform: rotate(45deg) scale(1);
+  
+    // Inner circle/checkmark
+    &:before, &:after{
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(1);
+      height: 3px;
+      width: 3px;
+      border-radius: 50%;
+    }
+  }
+}
+
+// Spinner Animations
+@keyframes nvSpinnerObj {
+  0%{
+    transform: rotate(45deg) scale(1);
+  }
+  50%{
+    transform: rotate(360deg) scale(0.7);
+    border-radius: 50%;
+    border-color: #60BEBD;
+  }
+  100%{
+    transform: rotate(45deg) ;
+  }
+}
+
+@keyframes nvSpinnerText {
+  0%, 100%{
+    color: #0F374B;
+  }
+  50%{
+    color: #60BEBD;
+  }
+}
+
+@keyframes nvSpinnerDot {
+  0%, 100%{
+    transform: translate(-50%, -50%) scale(1);
+    background-color: #0F374B;
+  }
+  50%{
+    transform: translate(-50%, -50%) scale(3);
+    background-color: #60BEBD;
+  }
+}

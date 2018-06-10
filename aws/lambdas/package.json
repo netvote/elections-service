@@ -18,11 +18,14 @@
   "homepage": "https://github.com/netvote/elections-service#readme",
   "dependencies": {
     "@netvote/elections-solidity": "^1.0.15",
+    "crypto": "^1.0.1",
     "googleapis": "^28.1.0",
+    "npm": "^6.1.0",
     "request": "^2.85.0",
     "request-promise": "^4.2.2",
     "truffle-contract": "^3.0.4",
-    "truffle-hdwallet-provider": "0.0.3",
+    "truffle-hdwallet-provider": "0.0.5",
+    "uuid": "^3.2.1",
     "web3": "^1.0.0-beta.33"
   }
 }

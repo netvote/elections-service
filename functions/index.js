@@ -1,18 +1,12 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
-admin.initializeApp({
-    credential: admin.credential.cert({
-        projectId: functions.config().netvote.admin.projectid,
-        clientEmail: functions.config().netvote.admin.clientemail,
-        privateKey: functions.config().netvote.admin.privatekey.replace(/\\n/g, '\n')
-    })
-});
+admin.initializeApp();
 
 process.env.AWS_ACCESS_KEY_ID = functions.config().netvote.secret.awsaccesskey;
 process.env.AWS_SECRET_ACCESS_KEY = functions.config().netvote.secret.awssecretkey;
 const AWS = require('aws-sdk');
-AWS.config.update({region: 'us-east-1'});
+AWS.config.update({ region: 'us-east-1' });
 
 
 const cookieParser = require('cookie-parser');
@@ -111,7 +105,7 @@ let uportSigner;
 let uportCredential;
 
 const initUPort = () => {
-    if(!uportCredential){
+    if (!uportCredential) {
         uportCfg = functions.config().netvote.uport;
         const uport = require("uport");
         uportSigner = uport.SimpleSigner(uportCfg.signingkey);
@@ -124,7 +118,7 @@ const initUPort = () => {
 };
 
 const initCivic = () => {
-    if(!civicCfg) {
+    if (!civicCfg) {
         civicCfg = functions.config().netvote.civic;
         civicSip = require('civic-sip-api');
         civicClient = civicSip.newClient({
@@ -136,14 +130,14 @@ const initCivic = () => {
 };
 
 const initQr = () => {
-    if(!QRCode) {
+    if (!QRCode) {
         QRCode = require('qrcode');
     }
 }
 
 const initIpfs = () => {
     let IPFS = require('ipfs-mini');
-    ipfs = new IPFS({host: 'gateway.ipfs.io', port: 443, protocol: 'https'});
+    ipfs = new IPFS({ host: 'gateway.ipfs.io', port: 443, protocol: 'https' });
 };
 
 const initUuid = () => {
@@ -177,13 +171,13 @@ const atMostOnce = (collection, id) => {
     let txRef = db.collection(collection).doc(id);
     return db.runTransaction((t) => {
         return t.get(txRef).then((doc) => {
-            if(!doc.exists) {
+            if (!doc.exists) {
                 throw "missing tx";
             }
-            if(doc.data().status){
+            if (doc.data().status) {
                 throw "duplicate";
             }
-            t.update(txRef, {status: "pending"});
+            t.update(txRef, { status: "pending" });
             return Promise.resolve(true);
         });
     });
@@ -242,7 +236,7 @@ const initGateway = () => {
 
 
 const sendError = (res, code, txt) => {
-    res.status(code).send({"status": "error", "text": txt});
+    res.status(code).send({ "status": "error", "text": txt });
 };
 
 const unauthorized = (res) => {
@@ -255,13 +249,13 @@ const forbidden = (res) => {
 
 const handleTxError = (ref, e) => {
     console.error(e);
-    if(e === "duplicate"){
+    if (e === "duplicate") {
         return true;
     }
     return ref.set({
         status: "error",
         error: e.message
-    }, {merge: true});
+    }, { merge: true });
 };
 
 // adds auth header to req.token for easy retrieval
@@ -333,7 +327,7 @@ const voteProto = () => {
 };
 
 const decodeVote = (voteBuff) => {
-    return voteProto().then((VoteProto)=>{
+    return voteProto().then((VoteProto) => {
         return new Promise((resolve, reject) => {
             try {
                 resolve(VoteProto.decode(voteBuff));
@@ -345,11 +339,11 @@ const decodeVote = (voteBuff) => {
 };
 
 const encodeVote = (voteObj) => {
-    return voteProto().then((VoteProto)=>{
+    return voteProto().then((VoteProto) => {
         return new Promise((resolve, reject) => {
             let errMsg = VoteProto.verify(voteObj);
             if (errMsg) {
-                console.error("error encoding proto: "+errMsg);
+                console.error("error encoding proto: " + errMsg);
                 reject(errMsg);
                 return;
             }
@@ -365,32 +359,32 @@ const validateVote = (vote, poolAddress) => {
         return BasePool.at(poolAddress).getBallotCount().then((bc) => {
             const ballotCount = parseInt(bc);
             if (vote.ballotVotes.length !== ballotCount) {
-                reject("vote must have "+ballotCount+" ballotVotes, actual=" + vote.ballotVotes.length)
+                reject("vote must have " + ballotCount + " ballotVotes, actual=" + vote.ballotVotes.length)
             }
             initIpfs();
-            for(let i=0; i<ballotCount; i++){
+            for (let i = 0; i < ballotCount; i++) {
                 let ballotVote = vote.ballotVotes[i];
                 // validate this ballot vote
-                BasePool.at(poolAddress).getBallot(i).then((ballotAddress)=>{
+                BasePool.at(poolAddress).getBallot(i).then((ballotAddress) => {
                     return BaseBallot.at(ballotAddress).metadataLocation()
-                }).then((location)=>{
+                }).then((location) => {
                     return ipfsLookup(location)
-                }).then((metadata)=>{
+                }).then((metadata) => {
 
                     if (ballotVote.choices.length !== metadata.decisions.length) {
-                        reject("ballotVotes["+i+"] should have " + metadata.decisions.length + " choices but had " + ballotVote.choices.length);
+                        reject("ballotVotes[" + i + "] should have " + metadata.decisions.length + " choices but had " + ballotVote.choices.length);
                     }
 
                     ballotVote.choices.forEach((c, idx) => {
                         if (!c.writeIn) {
                             if (c.selection < 0) {
-                                reject("ballotVotes["+i+"] choice["+idx+"] cannot have a selection less than 0")
+                                reject("ballotVotes[" + i + "] choice[" + idx + "] cannot have a selection less than 0")
                             }
                             if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
-                                reject("ballotVotes["+i+"] choice["+idx+"] must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1)+", was="+c.selection)
+                                reject("ballotVotes[" + i + "] choice[" + idx + "] must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1) + ", was=" + c.selection)
                             }
-                        }else{
-                            if(c.writeIn.length > 200){
+                        } else {
+                            if (c.writeIn.length > 200) {
                                 reject("writeIn is limited to 200 characters")
                             }
                         }
@@ -463,10 +457,10 @@ const getPins = (electionId, voterId) => {
     return db.collection(COLLECTION_DEMO_ELECTIONS).doc(electionId).get().then((doc) => {
         if (doc.exists) {
             return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret) => {
-                if(doc.data().pin){
+                if (doc.data().pin) {
                     pins.pin = toHmac(doc.data().pin, secret);
                 }
-                if(doc.data().decoyPin){
+                if (doc.data().decoyPin) {
                     pins.decoyPin = toHmac(doc.data().decoyPin, secret);
                 }
                 return pins;
@@ -522,7 +516,7 @@ const generateKeys = (uid, electionId, count) => {
                 keys.push(key);
                 const hmacHex = calculateRegKey(electionId, key);
                 let ref = db.collection(COLLECTION_VOTER_IDS).doc(hmacHex);
-                batch.set(ref, {createdBy: uid, pool: electionId});
+                batch.set(ref, { createdBy: uid, pool: electionId });
             }
             batch.commit().then(() => {
                 resolve(keys);
@@ -534,7 +528,7 @@ const generateKeys = (uid, electionId, count) => {
 };
 
 const votedAlready = (addr, voteId) => {
-    return BasePool.at(addr).votes(voteId).then((res)=>{
+    return BasePool.at(addr).votes(voteId).then((res) => {
         return res !== '';
     });
 };
@@ -566,7 +560,7 @@ const uidAuthorized = (uid, electionId) => {
 
 const uportIdCheck = (req, res, next) => {
     initUPort();
-    uportCredential.receive(req.token).then((result)=>{
+    uportCredential.receive(req.token).then((result) => {
         //console.log("uport="+JSON.stringify(result));
         req.token = result.address;
         // if(result.pushToken && result.publicEncKey){
@@ -574,13 +568,13 @@ const uportIdCheck = (req, res, next) => {
         //     req.publicEncKey = result.publicEncKey;
         // }
 
-        isDemoElection(req.body.address).then((demo)=>{
-            if(!demo){
+        isDemoElection(req.body.address).then((demo) => {
+            if (!demo) {
                 return voterIdCheck(req, res, next);
             }
             return next();
         });
-    }).catch((err)=>{
+    }).catch((err) => {
         console.error(err);
         unauthorized(res);
     });
@@ -588,7 +582,7 @@ const uportIdCheck = (req, res, next) => {
 
 const civicIdCheck = (req, res, next) => {
     initCivic();
-    if(!req.body.address){
+    if (!req.body.address) {
         sendError(res, 400, "address (of election) is required");
         return;
     }
@@ -596,16 +590,16 @@ const civicIdCheck = (req, res, next) => {
     civicClient.exchangeCode(civicJwt)
         .then((userData) => {
             req.token = userData.userId;
-            isDemoElection(req.body.address).then((demo)=>{
-                if(!demo){
+            isDemoElection(req.body.address).then((demo) => {
+                if (!demo) {
                     return voterIdCheck(req, res, next);
                 }
                 return next();
             });
         }).catch((error) => {
-        console.log(error);
-        unauthorized(res);
-    });
+            console.log(error);
+            unauthorized(res);
+        });
 };
 
 const voterIdCheck = (req, res, next) => {
@@ -626,11 +620,11 @@ const voterIdCheck = (req, res, next) => {
 const tokenOwnerCheck = (req, res, next) => {
     initGateway();
     //TODO: check signature
-    if(!req.body.owner){
+    if (!req.body.owner) {
         sendError(res, 400, "owner (address) is required");
         return;
     }
-    if(!req.body.address){
+    if (!req.body.address) {
         sendError(res, 400, "address (of election) is required");
         return;
     }
@@ -639,31 +633,31 @@ const tokenOwnerCheck = (req, res, next) => {
     TokenElection.at(req.body.address).tokenAddress().then((erc20address) => {
         return ERC20.at(erc20address).balanceOf(req.body.owner)
     }).then((bal) => {
-        if(bal.toNumber() === 0){
+        if (bal.toNumber() === 0) {
             sendError(res, 400, "This account has no balance on token");
-        }else{
-            req.weight = ""+web3.fromWei(bal.toNumber(), 'ether');
+        } else {
+            req.weight = "" + web3.fromWei(bal.toNumber(), 'ether');
             return next();
         }
     });
 };
 
 const utilKeyCheck = (req, res, next) => {
-    if(!req.token || req.token !== utilKey){
+    if (!req.token || req.token !== utilKey) {
         unauthorized(res);
         return;
     }
-    return next();
+    return nex.id
 };
 
 const checkPin = (electionId, pin, pinHmac, decoyHmac) => {
     let db = admin.firestore();
-    return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret)=>{
+    return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret) => {
         const hmac = toHmac(pin, secret);
-        if(hmac === pinHmac) {
+        if (hmac === pinHmac) {
             // is not decoy
             return false;
-        } else if(hmac === decoyHmac){
+        } else if (hmac === decoyHmac) {
             // is decoy
             return true;
         } else {
@@ -674,7 +668,7 @@ const checkPin = (electionId, pin, pinHmac, decoyHmac) => {
 
 const voterTokenCheck = (req, res, next) => {
     initJwt();
-    if(!req.token){
+    if (!req.token) {
         unauthorized(res);
         return;
     }
@@ -685,24 +679,24 @@ const voterTokenCheck = (req, res, next) => {
             req.voter = verifiedJwt.body.sub;
             req.pool = verifiedJwt.body.scope;
             req.weight = verifiedJwt.body.weight;
-            req.tokenKey = verifiedJwt.body.jti+verifiedJwt.body.sub;
+            req.tokenKey = verifiedJwt.body.jti + verifiedJwt.body.sub;
             let w = parseFloat(verifiedJwt.body.weight);
-            if(isNaN(w)){
+            if (isNaN(w)) {
                 req.weight = "1.0";
             }
-            if(verifiedJwt.body.pin){
-                if(!req.body.pin){
+            if (verifiedJwt.body.pin) {
+                if (!req.body.pin) {
                     unauthorized(res);
                     return;
                 }
-                checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verifiedJwt.body.decoyPin).then((decoy)=>{
-                   req.decoy = decoy;
-                   next();
-                }).catch((e)=>{
+                checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verifiedJwt.body.decoyPin).then((decoy) => {
+                    req.decoy = decoy;
+                    next();
+                }).catch((e) => {
                     console.error(e);
                     unauthorized(res);
                 });
-            }else {
+            } else {
                 return next();
             }
         }
@@ -730,27 +724,27 @@ const createWeightedVoterJwt = (electionId, voterId, weight) => {
         iss: "https://netvote.io/",
         sub: hmacVoterId(electionId + ":" + voterId),
         scope: electionId,
-        weight: weight+""
+        weight: weight + ""
     };
     return getPins(electionId, voterId).then((pins) => {
-        if(pins.pin){
+        if (pins.pin) {
             claims.pin = pins.pin;
         }
-        if(pins.decoyPin){
+        if (pins.decoyPin) {
             claims.decoyPin = pins.decoyPin;
         }
         let jwt = nJwt.create(claims, voteTokenSecret);
         jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
         let db = admin.firestore();
-        let key = jwt.body.jti+jwt.body.sub;
+        let key = jwt.body.jti + jwt.body.sub;
         return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
             status: "pending",
             timestamp: new Date().getTime()
-        }).then(()=>{
+        }).then(() => {
             return jwt.compact();
         })
     })
-    
+
 };
 
 const createVoterJwt = (electionId, voterId) => {
@@ -770,7 +764,7 @@ const encrypt = (text, electionId) => {
 };
 
 const updatesAreAllowed = (address) => {
-    return BasePool.at(address).election((el)=>{
+    return BasePool.at(address).election((el) => {
 
     });
 };
@@ -806,20 +800,20 @@ const web3GatewayNonce = () => {
 
 const sendGas = (addr, amount) => {
     return new Promise(function (resolve, reject) {
-        gatewayNonce().then((nonce)=>{
+        gatewayNonce().then((nonce) => {
             try {
                 web3.eth.sendTransaction({
                     to: addr,
                     value: amount,
                     from: web3Provider.getAddress()
                 }, (err, res) => {
-                    if(!err) {
+                    if (!err) {
                         resolve(res)
-                    }else{
+                    } else {
                         reject(err);
                     }
                 })
-            }catch(e){
+            } catch (e) {
                 reject(e);
             }
         })
@@ -839,7 +833,7 @@ const sendQr = (txt, res) => {
     initQr();
     res.setHeader('Content-type', 'image/png');
     QRCode.toFileStream(res, txt, {
-        color:{
+        color: {
             dark: "#0D364B",
             light: "#ffffff"
         }
@@ -848,25 +842,25 @@ const sendQr = (txt, res) => {
 
 const sendQrJwt = (address, voterId, pushToken, publicEncKey, res) => {
     initQr();
-    return createVoterJwt(address, voterId).then((tok)=>{
+    return createVoterJwt(address, voterId).then((tok) => {
 
         let obj = {
             "address": address,
             "token": tok,
-            "callback": "https://us-central1-netvote1.cloudfunctions.net/vote/scan"
+            "callback": "https://netvote2.firebaseapp.com/vote/scan"
         };
 
-        if(pushToken){
+        if (pushToken) {
             obj["pushToken"] = pushToken;
         }
 
-        if(publicEncKey){
+        if (publicEncKey) {
             obj["publicEncKey"] = publicEncKey;
         }
 
         return new Promise(function (resolve, reject) {
             QRCode.toDataURL(JSON.stringify(obj), {
-                color:{
+                color: {
                     dark: "#0D364B",
                     light: "#ffffff"
                 }
@@ -910,15 +904,15 @@ const deleteQueryBatch = (db, query, batchSize, resolve, reject) => {
             });
         }).then((numDeleted) => {
 
-        if (numDeleted === 0) {
-            resolve();
-            return;
-        }
+            if (numDeleted === 0) {
+                resolve();
+                return;
+            }
 
-        process.nextTick(() => {
-            deleteQueryBatch(db, query, batchSize, resolve, reject);
-        });
-    })
+            process.nextTick(() => {
+                deleteQueryBatch(db, query, batchSize, resolve, reject);
+            });
+        })
         .catch(reject);
 }
 
@@ -932,7 +926,7 @@ utilApp.delete('/:collection/expired', (req, res) => {
         sendError(res, 400, "address is required");
         return;
     }
-    if(!req.params.collection.startsWith("transaction")){
+    if (!req.params.collection.startsWith("transaction")) {
         sendError(res, 400, "only transaction collections are clearable");
         return;
     }
@@ -943,12 +937,12 @@ utilApp.delete('/:collection/expired', (req, res) => {
     //older than 1 week
     const weekInMs = 7 * 24 * 60 * 60 * 1000;
     const oneWeekAgo = new Date().getTime() - weekInMs;
-    setImmediate(()=> {
+    setImmediate(() => {
         purgeOldTransactions(db, collection, oneWeekAgo, 1000).then(() => {
             console.log("Cleared old transactions from " + collection);
         });
     });
-    res.send({status: "ok"});
+    res.send({ status: "ok" });
 });
 
 exports.util = functions.https.onRequest(utilApp);
@@ -992,13 +986,13 @@ demoApp.get('/key/:address', (req, res) => {
     return isDemoElection(req.params.address).then((allowed) => {
         if (allowed) {
             generateKeys("demo", req.params.address, 1).then((keys) => {
-                res.send({key: keys[0]});
+                res.send({ key: keys[0] });
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
             });
-        }else {
-            sendError(res, 403, req.params.address+" is not a demo election");
+        } else {
+            sendError(res, 403, req.params.address + " is not a demo election");
         }
     });
 });
@@ -1017,8 +1011,8 @@ demoApp.get('/qr/key/:address', (req, res) => {
                 console.error(e);
                 sendError(res, 500, e.message);
             });
-        }else {
-            sendError(res, 403, req.params.address+" is not a demo election");
+        } else {
+            sendError(res, 403, req.params.address + " is not a demo election");
         }
     });
 });
@@ -1055,12 +1049,12 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
     }
 
     // initializes encryption key
-    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key)=>{
-        return submitEthTransaction(COLLECTION_ACTIVATE_ELECTION_TX,{
+    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) => {
+        return submitEthTransaction(COLLECTION_ACTIVATE_ELECTION_TX, {
             address: req.body.address
         })
     }).then((ref) => {
-        res.send({txId: ref.id, collection: COLLECTION_ACTIVATE_ELECTION_TX});
+        res.send({ txId: ref.id, collection: COLLECTION_ACTIVATE_ELECTION_TX });
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -1073,15 +1067,23 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
         return;
     }
 
-    return submitEthTransaction(COLLECTION_CLOSE_ELECTION_TX,{
+    return submitEthTransaction(COLLECTION_CLOSE_ELECTION_TX, {
         address: req.body.address
     }).then((ref) => {
-        res.send({txId: ref.id, collection: COLLECTION_CLOSE_ELECTION_TX});
+        res.send({ txId: ref.id, collection: COLLECTION_CLOSE_ELECTION_TX });
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
     });
 });
+
+let lambdaCallback = (error, data) => {
+    if (error) {
+        console.error("error invoking encryption lambda", error)
+    } else {
+        console.log("invocation completed, data:" + JSON.stringify(lambData))
+    }
+}
 
 adminApp.post('/election/encryption', electionOwnerCheck, (req, res) => {
     if (!req.body.address) {
@@ -1089,17 +1091,27 @@ adminApp.post('/election/encryption', electionOwnerCheck, (req, res) => {
         return;
     }
 
-    // elections can only add decryption keys IF election is in building or closed states
-    return inPhase(req.body.address, [PHASE_BUILDING, PHASE_CLOSED]).then((isValidPhase)=> {
-        if (!isValidPhase) {
-            sendError(res, 409, "Election must be in Building or Closed state");
-            return;
-        }
-        return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) => {
-            return submitEncryptTx(req.body.address, key, true);
-        }).then((ref) => {
-            res.send({txId: ref.id, collection: COLLECTION_ENCRYPTION_TX});
+    let key;
+
+    return getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((k) => {
+        key = k;
+        return submitEncryptTx(req.body.address, key, true);
+    }).then((ref) => {
+        
+        let data = snap.data();
+        adminNonce().then((nonce) => {
+            let payload = {
+                address: req.body.address,
+                key: key,
+                nonce: nonce,
+                callback: COLLECTION_ENCRYPTION_TX + "/" + ref.id
+            }
+            asyncInvokeLambda('netvote-publish-encryption-key', payload);
+        }).then(() => {
+            return (data.deleteHash) ? removeHashKey(req.body.address, COLLECTION_HASH_SECRETS) : null
         })
+
+        res.send({ txId: ref.id, collection: COLLECTION_ENCRYPTION_TX });
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -1124,8 +1136,8 @@ adminApp.post('/election', (req, res) => {
         metadataLocation: metadataLocation,
         autoActivate: autoActivate,
         uid: req.user.uid
-    }).then((ref)=> {
-        res.send({txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX});
+    }).then((ref) => {
+        res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -1157,8 +1169,8 @@ adminApp.post('/token/election', (req, res) => {
         metadataLocation: metadataLocation,
         autoActivate: autoActivate,
         uid: req.user.uid
-    }).then((ref)=> {
-        res.send({txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX});
+    }).then((ref) => {
+        res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
     }).catch((e) => {
         console.error(e);
         sendError(res, 500, e.message);
@@ -1170,18 +1182,18 @@ exports.electionClose = functions.firestore
     .document(COLLECTION_CLOSE_ELECTION_TX + '/{id}')
     .onCreate((snap, context) => {
         initGateway();
-        console.log("Close Election: "+context.params.id);
+        console.log("Close Election: " + context.params.id);
         let data = snap.data();
         return atMostOnce(COLLECTION_CLOSE_ELECTION_TX, context.params.id).then(() => {
-            return adminNonce().then((nonce)=> {
-                return ElectionPhaseable.at(data.address).close({nonce: nonce, from: web3Provider.getAddress()})
+            return adminNonce().then((nonce) => {
+                return ElectionPhaseable.at(data.address).close({ nonce: nonce, from: web3Provider.getAddress() })
             });
         }).then((tx) => {
             return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime()
-            }, {merge: true});
+            }, { merge: true });
         }).catch((e) => {
             return handleTxError(snap.ref, e);
         });
@@ -1191,116 +1203,63 @@ exports.electionActivate = functions.firestore
     .document(COLLECTION_ACTIVATE_ELECTION_TX + '/{id}')
     .onCreate((snap, context) => {
         initGateway();
-        console.log("Close Election: "+context.params.id);
+        console.log("Close Election: " + context.params.id);
         let data = snap.data();
         return atMostOnce(COLLECTION_ACTIVATE_ELECTION_TX, context.params.id).then(() => {
-            return adminNonce().then((nonce)=> {
-                return ElectionPhaseable.at(data.address).activate({nonce: nonce, from: web3Provider.getAddress()})
+            return adminNonce().then((nonce) => {
+                return ElectionPhaseable.at(data.address).activate({ nonce: nonce, from: web3Provider.getAddress() })
             });
         }).then((tx) => {
             return snap.ref.set({
                 tx: tx.tx,
                 status: "complete",
                 completeTime: new Date().getTime()
-            }, {merge: true});
+            }, { merge: true });
         }).catch((e) => {
             return handleTxError(snap.ref, e);
         });
     });
+
+let getNonces = (num) => {
+    let noncePromises = []
+    for (let i = 0; i < num; i++) {
+        noncePromises.push(adminNonce())
+    }
+    return Promise.all(noncePromises).then((nonces)=>{
+        nonces.sort((a, b) => a - b);
+        return nonces;
+    });
+};
 
 exports.createElection = functions.firestore
     .document(COLLECTION_CREATE_ELECTION_TX + '/{id}')
     .onCreate((snap, context) => {
-        initGateway();
-        console.log("Create Election: "+ context.params.id);
+        console.log("Create Election: " + context.params.id);
         let data = snap.data();
 
-        let gatewayAddress = web3Provider.getAddress();
         let addr = "";
         let tx = "";
+        let numberOfNonces = (data.isPublic) ? 3 : 2;
+
         return atMostOnce(COLLECTION_CREATE_ELECTION_TX, context.params.id).then(() => {
-            return adminNonce().then((nonce)=>{
-                if(data.type === "token"){
-                    return TokenElection.new(
-                        web3.sha3(data.uid),
-                        voteAddress,
-                        gatewayAddress,
-                        data.allowUpdates,
-                        gatewayAddress,
-                        data.metadataLocation,
-                        gatewayAddress,
-                        data.autoActivate,
-                        data.tokenAddress,
-                        (new Date().getTime())/1000,
-                        {from: gatewayAddress, nonce: nonce})
-                }else {
-                    return BasicElection.new(
-                        web3.sha3(data.uid),
-                        voteAddress,
-                        gatewayAddress,
-                        data.allowUpdates,
-                        gatewayAddress,
-                        data.metadataLocation,
-                        gatewayAddress,
-                        data.autoActivate,
-                        {from: gatewayAddress, nonce: nonce})
+            return getNonces(numberOfNonces).then((n) => {
+                let payload = {
+                    nonces: n,
+                    election: data,
+                    callback: COLLECTION_CREATE_ELECTION_TX + "/" + snap.ref.id
                 }
+                asyncInvokeLambda('netvote-create-election', payload, (error, lambData) => {
+                    if (error) {
+                        handleTxError(snap.ref, error);
+                    } else {
+                        console.log("invocation completed, data:" + JSON.stringify(lambData))
+                    }
+                })
             })
-        }).then((el) => {
-                addr = el.address;
-                tx = el.transactionHash+"";
-        }).then(()=>{
-            // generate hash key for voters
-            return getHashKey(addr, COLLECTION_HASH_SECRETS);
-        }).then(()=> {
-            return getHashKey(addr, COLLECTION_ENCRYPTION_KEYS)
-            // add key if should add key
-        }).then((key)=> {
-            if (data.isPublic) {
-                return submitEncryptTx(addr, key, false);
-            } else {
-                return null;
-            }
-        }).then(()=>{
-            return submitEthTransaction(COLLECTION_TOKEN_TRANSFER_TX, {
-                address: addr
-            });
-        }).then(()=>{
-            return snap.ref.set({
-                tx: tx,
-                status: "complete",
-                completeTime: new Date().getTime(),
-                address: addr
-            }, {merge: true});
         }).catch((e) => {
             return handleTxError(snap.ref, e);
         });
     });
-
-exports.publishEncryption = functions.firestore
-    .document(COLLECTION_ENCRYPTION_TX + '/{id}')
-    .onCreate((snap, context) => {
-        initGateway();
-        console.log("Publish Encryption: "+context.params.id);
-        let data = snap.data();
-        return atMostOnce(COLLECTION_ENCRYPTION_TX, context.params.id).then(() => {
-            return adminNonce().then((nonce)=>{
-                return BaseElection.at(data.address).setPrivateKey(data.key, {nonce: nonce, from: web3Provider.getAddress()})
-            });
-        }).then((tx) => {
-            return snap.ref.set({
-                tx: tx.tx,
-                status: "complete",
-                completeTime: new Date().getTime()
-            }, {merge: true});
-        }).then(() => {
-            return (data.deleteHash) ? removeHashKey(data.address, COLLECTION_HASH_SECRETS) : null
-        }).catch((e) => {
-            return handleTxError(snap.ref, e);
-        });
-    });
-
-exports.admin = functions.https.onRequest(adminApp);
 
 // VOTER APIs
 const voterApp = express();
@@ -1308,14 +1267,14 @@ voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
 
 voterApp.post('/auth', voterIdCheck, (req, res) => {
-    return createVoterJwt(req.body.address, req.token).then((tok)=>{
-        res.send({token: tok});
+    return createVoterJwt(req.body.address, req.token).then((tok) => {
+        res.send({ token: tok });
     })
 });
 
 voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
-    return createVoterJwt(req.body.address, req.token).then((tok)=>{
-        res.send({token: tok});
+    return createVoterJwt(req.body.address, req.token).then((tok) => {
+        res.send({ token: tok });
     })
 });
 
@@ -1340,7 +1299,7 @@ voterApp.get('/uport/request', (req, res) => {
         callbackUrl: req.query.callbackUrl,
         exp: new Date().getTime() + 60000
     }).then(requestToken => {
-        res.send({"requestToken": requestToken});
+        res.send({ "requestToken": requestToken });
     });
 });
 
@@ -1359,21 +1318,33 @@ voterApp.get('/qr/generated/:address', (req, res) => {
                 console.error(e);
                 sendError(res, 500, e.message);
             });
-        }else {
-            sendError(res, 403, req.params.address+" is not a demo election");
+        } else {
+            sendError(res, 403, req.params.address + " is not a demo election");
         }
     });
 });
 
+let asyncInvokeLambda = (name, payload, callback) => {
+    const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
+    const lambdaParams = {
+        FunctionName: name,
+        InvocationType: 'Event',
+        LogType: 'None',
+        Payload: JSON.stringify(payload)
+    };
+    callback = (callback) ? callback : lambdaCallback;
+    lambda.invoke(lambdaParams, callback);
+}
+
 voterApp.post('/token/auth', tokenOwnerCheck, (req, res) => {
-    createWeightedVoterJwt(req.body.address, req.body.owner, req.weight).then((tk)=>{
-        res.send({token: tk});
+    createWeightedVoterJwt(req.body.address, req.body.owner, req.weight).then((tk) => {
+        res.send({ token: tk });
     });
 });
 
 voterApp.post('/scan', voterTokenCheck, (req, res) => {
-    markJwtStatus(req.tokenKey, "scanned").then(()=>{
-        res.send({status: "ok"});
+    markJwtStatus(req.tokenKey, "scanned").then(() => {
+        res.send({ status: "ok" });
     });
 });
 
@@ -1400,7 +1371,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
             voteObj = v;
             voteObj.weight = req.weight;
             voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
-            return validateVote(voteObj, req.pool)
+            return true //validateVote(voteObj, req.pool)
         }).then((valid) => {
             return encodeVote(voteObj);
         }).then((vote) => {
@@ -1413,11 +1384,11 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 return encrypt(vote, req.pool);
             }).then((encryptedPayload) => {
                 encryptedVote = encryptedPayload;
-                return votedAlready(req.pool, voteId)
-            }).then((votedAlready)=>{
+                return false; //votedAlready(req.pool, voteId)
+            }).then((votedAlready) => {
                 update = votedAlready;
-                return gatewayNonce().then((nonce)=>{
-                    if(votedAlready){
+                return gatewayNonce().then((nonce) => {
+                    if (votedAlready) {
                         collection = COLLECTION_UPDATE_VOTE_TX
                     }
                     voteObj = {
@@ -1436,27 +1407,20 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                     });
                 });
             }).then((jobRef) => {
-                markJwtStatus(req.tokenKey, "voted").then(()=> {
-                    const lambda = new AWS.Lambda({region: "us-east-1", apiVersion: '2015-03-31'});
-                    const lambdaParams = {
-                        FunctionName : 'netvote-cast-vote',
-                        InvocationType : 'Event',
-                        LogType : 'None',
-                        Payload: JSON.stringify({
-                            callback: collection+"/"+jobRef.id,
-                            vote: voteObj
-                        })
-                    };
+                markJwtStatus(req.tokenKey, "voted").then(() => {
 
-                    lambda.invoke(lambdaParams, (error, data)=>{
-                        if(error){
+                    asyncInvokeLambda('netvote-cast-vote', {
+                        callback: collection + "/" + jobRef.id,
+                        vote: voteObj
+                    }, (error, data) => {
+                        if (error) {
                             handleTxError(jobRef, error);
-                        }else{
-                            console.log("invocation completed, data:"+JSON.stringify(data))
+                        } else {
+                            console.log("invocation completed, data:" + JSON.stringify(data))
                         }
                     });
 
-                    res.send({txId: jobRef.id, collection: collection});
+                    res.send({ txId: jobRef.id, collection: collection });
                 })
             }).catch((e) => {
                 console.error(e);
@@ -1469,26 +1433,6 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     }
 });
 
-exports.transferToken = functions.firestore
-    .document(COLLECTION_TOKEN_TRANSFER_TX + '/{id}')
-    .onCreate((snap, context) => {
-        initGateway();
-        console.log("Transfer Token: "+context.params.id);
-        let obj = snap.data();
-        return atMostOnce(COLLECTION_TOKEN_TRANSFER_TX, context.params.id).then(() => {
-            return adminNonce().then((nonce)=> {
-                return Vote.at(voteAddress).transfer(obj.address, web3.toWei(1000, 'ether'), {nonce: nonce, from: web3Provider.getAddress()})
-            });
-        }).then((tx) => {
-            return snap.ref.set({
-                status: "complete",
-                completeTime: new Date().getTime(),
-                tx: tx.tx
-            }, {merge: true});
-        }).catch((e) => {
-            return handleTxError(snap.ref, e);
-        });
-    });
 
 
 exports.vote = functions.https.onRequest(voterApp);

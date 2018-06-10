@@ -1,0 +1,38 @@
+// Base/Global Styles
+
+html, body{
+    height: 100%;
+ }
+ 
+ input.ng-invalid.ng-touched{
+     border: 1px solid red;
+ }
+ 
+ p.help-block{
+     color: red;
+ }
+ 
+ h1{
+     font-size: 1.5rem;
+ }
+ 
+ .form-control{
+
+    &::-webkit-input-placeholder {
+        color: #ccc;
+        font-size: 13px;
+      }
+      &::-moz-placeholder {
+        color: #ccc;
+        font-size: 13px;
+      }
+      &:-ms-input-placeholder {
+        color: #ccc;
+        font-size: 13px;
+      }
+      &::placeholder {
+        color: #ccc;
+        font-size: 13px;
+      }
+ }
+ 
