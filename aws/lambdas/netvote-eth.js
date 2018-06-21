@@ -1,6 +1,9 @@
+const rp = require('request-promise-native');
 const HDWalletProvider = require("truffle-hdwallet-provider");
 const contract = require('truffle-contract');
 const Web3 = require("web3");
+
+const contractCache = {}
 
 const web3Provider = new HDWalletProvider(process.env.MNEMONIC, process.env.ETH_URL);
 const web3 = new Web3(web3Provider);
@@ -12,39 +15,56 @@ const web3Defaults = {
     gasPrice: parseInt(process.env.GAS_PRICE)
 };
 
-const BasicElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasicElection.json'));
-BasicElection.setProvider(web3Provider);
-BasicElection.defaults(web3Defaults);
+const toContractUrl = (name, version) => {
+    return `https://s3.amazonaws.com/netvote-election-contracts/${version}/${name}.json`
+}
 
-const Vote = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/Vote.json'));
-Vote.setProvider(web3Provider);
-Vote.defaults(web3Defaults);
-
-const BasePool = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BasePool.json'));
-BasePool.setProvider(web3Provider);
-BasePool.defaults(web3Defaults);
-
-const BaseElection = contract(require('./node_modules/@netvote/elections-solidity/build/contracts/BaseElection.json'));
-BaseElection.setProvider(web3Provider);
-BaseElection.defaults(web3Defaults);
+const getAbi = async (name, version) => {
+    const url = toContractUrl(name, version);
+    if(contractCache[url]) {
+        return contractCache[url]
+    }
+    const c = contract(await rp(url, { json: true }))
+    c.setProvider(web3Provider)
+    c.defaults(web3Defaults);
+    contractCache[url] = c;
+    return c;
+}
 
 module.exports = {
-
-    contracts: () => {
-        return {
-            Vote: Vote,
-            BasicElection: BasicElection,
-            BasePool: BasePool,
-            BaseElection: BaseElection
-        };
+    BasicElection: (version) => {
+        return getAbi("BasicElection", version)
     },
-
+    BasePool: (version) => {
+        return getAbi("BasePool", version)
+    },
+    BaseBallot: (version) => {
+        return getAbi("BaseBallot", version)
+    },
+    BaseElection: (version) => {
+        return getAbi("BaseElection", version)
+    },
+    KeyHolder: (version) => {
+        return getAbi("KeyHolder", version)
+    },
+    Vote: (version) => {
+        if(version <= 15){
+            return getAbi("Vote", version)
+        } else{
+            //17+ (there is no 16)
+            return getAbi("VoteAllowance", version)
+        }
+    },
+    VoteAllowance: (version) => {
+        return getAbi("VoteAllowance", version)
+    },
+    network: () => {
+        return process.env.NETWORK || "ropsten"
+    },
     gatewayAddress: () => {
         return web3Provider.getAddress();
     },
-
     web3: () => {
         return web3;
     }
-
 }

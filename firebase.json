@@ -14,7 +14,8 @@
       {"source": "/vote/**", "function": "api"},
       {"source": "/demo/**", "function": "api"},
       {"source": "/admin/**", "function": "api"},
-      {"source": "/util/**", "function": "api"}
+      {"source": "/util/**", "function": "api"},
+      {"source": "/eth/**", "function": "api"}
     ]
   }
 }

@@ -1,27 +1,26 @@
 const firebaseUpdater = require("./firebase-updater.js");
 
 const nv = require("./netvote-eth.js");
-const netvoteContracts = nv.contracts();
 
-const BasePool = netvoteContracts.BasePool;
 
-const votedAlready = async (addr, voteId) => {
+const votedAlready = async (addr, voteId, BasePool) => {
     console.log("calling votedAlready for addr: "+addr+", voteId: "+voteId)
     let res = await BasePool.at(addr).votes(voteId);
     return res !== '';
 };
 
-const castVote = async(voteObj) => {
+const castVote = async(voteObj, BasePool) => {
     console.log("casting vote from "+nv.gatewayAddress())
     let tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: voteObj.nonce, from: nv.gatewayAddress()})
     console.log("completed casting vote")
     return tx;
 };
 
-const updateVote = async(voteObj) => {
+const updateVote = async(voteObj, BasePool) => {
     console.log("updating vote from "+nv.gatewayAddress())
-    return await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: voteObj.nonce, from: nv.gatewayAddress()})
+    let tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: voteObj.nonce, from: nv.gatewayAddress()})
     console.log("completed updating vote")
+    return tx;
 };
 
 exports.handler = async (event, context, callback) => {
@@ -29,10 +28,12 @@ exports.handler = async (event, context, callback) => {
     console.log("context: "+JSON.stringify(context));
 
     try {
-        let update = await votedAlready(event.vote.address, event.vote.voteId);
+        let version = event.vote.version ? event.vote.version : 15;
+        let BasePool = await nv.BasePool(version);
+        let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
         console.log("updated already: "+update);
         const ethTransaction = (update) ? updateVote : castVote;
-        const tx = await ethTransaction(event.vote);
+        const tx = await ethTransaction(event.vote, BasePool);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"

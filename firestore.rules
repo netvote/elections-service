@@ -33,6 +33,11 @@ service cloud.firestore {
         allow read, write: if true;
     }
 
+    match /deployedElections/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
     match /transactionCastVote/{id} {
         allow read: if true;
         allow write: if false;

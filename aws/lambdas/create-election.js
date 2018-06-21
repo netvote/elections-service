@@ -4,10 +4,8 @@ const uuid = require('uuid/v4')
 
 const nv = require("./netvote-eth.js");
 const web3 = nv.web3();
-const netvoteContracts = nv.contracts();
 
-const BasicElection = netvoteContracts.BasicElection;
-const Vote = netvoteContracts.Vote;
+const ETH_NETWORK = nv.network();
 
 const toHmac = (value, key) => {
     const hmac = crypto.createHmac('sha256', key);
@@ -35,9 +33,29 @@ const addDemoElection = async(addr) =>{
     })
 }
 
-const createElection = async(election, nonces) => {
+const addDeployedElections = async(addr, metadataLocation, version) =>{
+    return firebaseUpdater.createDoc("deployedElections", addr, {
+        network: {
+            stringValue: ETH_NETWORK
+        },
+        metadataLocation: {
+            stringValue: metadataLocation
+        },
+        version: {
+            integerValue: `${version}`
+        },
+        demo: {
+            // this lets anyone vote (for demos)
+            booleanValue: true
+        }
+    })
+}
+
+const createElection = async(election, nonces, version) => {
     let gatewayAddress = nv.gatewayAddress();
-    let voteAddress = "0xd3f848815c4a70b103757cf519111cfdc85b4cfc"; //TODO: avoid hardcoding
+    let voteAddress = process.env.VOTE_ADDRESS; 
+    version = (version) ? version : 15;
+    BasicElection = await nv.BasicElection(version);
     let el = await BasicElection.new(
         web3.utils.sha3(election.uid),
         voteAddress,
@@ -49,7 +67,9 @@ const createElection = async(election, nonces) => {
         election.autoActivate,
         {from: gatewayAddress, nonce: nonces[0]})
 
-    let hashSecret = generateHashKey("hashSecrets", el.address)
+    generateHashKey("hashSecrets", el.address)
+
+    Vote = await nv.Vote(version);
     Vote.at(voteAddress).transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonces[1], from: nv.gatewayAddress()})
 
     if(election.isPublic){
@@ -59,6 +79,7 @@ const createElection = async(election, nonces) => {
         generateHashKey("encryptionKeys", el.address)
     }
     addDemoElection(el.address);
+    addDeployedElections(el.address, election.metadataLocation, version);
     return el;
 }
 
@@ -67,7 +88,7 @@ exports.handler = async (event, context, callback) => {
     console.log("context: "+JSON.stringify(context));
 
     try {
-        const tx = await createElection(event.election, event.nonces);
+        const tx = await createElection(event.election, event.nonces, event.version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
             status: "complete",

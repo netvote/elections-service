@@ -1,11 +1,8 @@
 const firebaseUpdater = require("./firebase-updater.js");
 
 const nv = require("./netvote-eth.js");
-const netvoteContracts = nv.contracts();
 
-const BaseElection = netvoteContracts.BaseElection;
-
-const postEncryptionKey = async(addr, key, nonce) => {
+const postEncryptionKey = async(addr, key, nonce, BaseElection) => {
     return BaseElection.at(addr).setPrivateKey(key, {nonce: nonce, from: nv.gatewayAddress()})
 };
 
@@ -14,7 +11,9 @@ exports.handler = async (event, context, callback) => {
     console.log("context: "+JSON.stringify(context));
 
     try {
-        const tx = await postEncryptionKey(event.address, event.key, event.nonce);
+        let version = event.version ? event.version : 15;
+        const BaseElection = await nv.BaseElection(version);
+        const tx = await postEncryptionKey(event.address, event.key, event.nonce, BaseElection);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"

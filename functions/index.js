@@ -1,7 +1,13 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
-admin.initializeApp();
+admin.initializeApp({
+    credential: admin.credential.cert({
+        projectId: functions.config().netvote.admin.projectid,
+        clientEmail: functions.config().netvote.admin.clientemail,
+        privateKey: functions.config().netvote.admin.privatekey.replace(/\\n/g, '\n')
+    })
+});
 
 process.env.AWS_ACCESS_KEY_ID = functions.config().netvote.secret.awsaccesskey;
 process.env.AWS_SECRET_ACCESS_KEY = functions.config().netvote.secret.awssecretkey;
@@ -30,6 +36,8 @@ const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_VOTER_PIN_HASH_SECRET = "voterPinHashSecrets";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
+const COLLECTION_NETWORK = "network";
+
 const COLLECTION_NONCE_COUNTER = "nonceCounter";
 const COLLECTION_VOTE_TX = "transactionCastVote";
 const COLLECTION_UPDATE_VOTE_TX = "transactionUpdateVote";
@@ -39,6 +47,7 @@ const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
 const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
 const COLLECTION_TOKEN_TRANSFER_TX = "transactionTokenTransfer";
 const COLLECTION_JWT_TRANSACTION = "transactionJwt";
+const COLLECTION_DEPLOYED_ELECTIONS = "deployedElections"
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -769,14 +778,40 @@ const updatesAreAllowed = (address) => {
     });
 };
 
-const adminNonce = () => {
+const adminNonce = (network) => {
     //TODO: when we separate addresses we can do so here
-    return gatewayNonce();
+    return gatewayNonce(network);
 };
 
-const gatewayNonce = () => {
+const getDeployedElection = (address) => {
     let db = admin.firestore();
-    let counterRef = db.collection(COLLECTION_NONCE_COUNTER).doc("gateway");
+    return db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(address).get().then((doc) => {
+        if (!doc.exists) {
+            console.warn("election didn't have deployed entry, returning defaults")
+            return {
+                network: "ropsten",
+                version: 15
+            }
+        }
+        return doc.data();
+    })
+}
+
+const latestContractVersion = (network) => {
+    let db = admin.firestore();
+    return db.collection(COLLECTION_NETWORK).doc(network).get().then((doc) => {
+        if (!doc.exists) {
+            console.log("Network "+network+" does not exist.")
+            throw "Network "+network+" does not exist."
+        }
+        console.log("returning doc for network="+network)
+        return doc.data().version;  
+    })
+}
+
+const gatewayNonce = (network) => {
+    let db = admin.firestore();
+    let counterRef = db.collection(COLLECTION_NETWORK).doc(network);
 
     return db.runTransaction((t) => {
         return t.get(counterRef).then((doc) => {
@@ -873,8 +908,6 @@ const sendQrJwt = (address, voterId, pushToken, publicEncKey, res) => {
             });
         });
     })
-
-
 };
 
 
@@ -1120,6 +1153,7 @@ adminApp.post('/election/encryption', electionOwnerCheck, (req, res) => {
 
 adminApp.post('/election', (req, res) => {
     let isPublic = !!(req.body.isPublic);
+    let network = req.body.network || "ropsten";
     let metadataLocation = req.body.metadataLocation;
     let allowUpdates = !!(req.body.allowUpdates);
     let autoActivate = !!(req.body.autoActivate);
@@ -1129,17 +1163,58 @@ adminApp.post('/election', (req, res) => {
         return;
     }
 
-    return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
-        type: "basic",
-        allowUpdates: allowUpdates,
-        isPublic: isPublic,
-        metadataLocation: metadataLocation,
-        autoActivate: autoActivate,
-        uid: req.user.uid
+    if(network !== "ropsten" && network !== "netvote") {
+        sendError(res, 400, "network must be one of: ropsten, netvote (default: ropsten)")
+        return;
+    }
+
+    // 3 = create election, transfer vote, post encryption key
+    // 2 = create election, transfer vote
+    let numberOfNonces = (isPublic) ? 3 : 2;
+    
+    let version;
+    return latestContractVersion(network).then((v) => {
+        version = v;
+        return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
+            type: "basic",
+            network: network,
+            uid: req.user.uid,
+            version: v
+        })
     }).then((ref) => {
-        res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
+        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id).then(() => {
+            return getNonces(numberOfNonces, network)
+        }).then((n) => {
+            let payload = {
+                version: version,
+                nonces: n,
+                election: {
+                    type: "basic",
+                    allowUpdates: allowUpdates,
+                    isPublic: isPublic,
+                    metadataLocation: metadataLocation,
+                    autoActivate: autoActivate,
+                    uid: req.user.uid
+                },
+                callback: COLLECTION_CREATE_ELECTION_TX + "/" + ref.id
+            }
+            console.log("sending payload: "+JSON.stringify(payload))
+            let lambdaName = (network === "netvote") ? 'private-create-election'  : 'netvote-create-election';
+            asyncInvokeLambda(lambdaName, payload, (error, lambData) => {
+                if (error) {
+                    handleTxError(ref, error);
+                } else {
+                    console.log("invocation completed, data:" + JSON.stringify(lambData))
+                    res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
+                }
+            })
+        }).catch((e) => {
+            return handleTxError(ref, e);
+        });
+        
     }).catch((e) => {
         console.error(e);
+        console.log("error while creating election: "+e)
         sendError(res, 500, e.message);
     });
 });
@@ -1220,10 +1295,10 @@ exports.electionActivate = functions.firestore
         });
     });
 
-let getNonces = (num) => {
+let getNonces = (num, network) => {
     let noncePromises = []
     for (let i = 0; i < num; i++) {
-        noncePromises.push(adminNonce())
+        noncePromises.push(adminNonce(network))
     }
     return Promise.all(noncePromises).then((nonces)=>{
         nonces.sort((a, b) => a - b);
@@ -1231,24 +1306,24 @@ let getNonces = (num) => {
     });
 };
 
+/*
 exports.createElection = functions.firestore
     .document(COLLECTION_CREATE_ELECTION_TX + '/{id}')
     .onCreate((snap, context) => {
         console.log("Create Election: " + context.params.id);
         let data = snap.data();
-
-        let addr = "";
-        let tx = "";
         let numberOfNonces = (data.isPublic) ? 3 : 2;
+        let network = data.network;
 
         return atMostOnce(COLLECTION_CREATE_ELECTION_TX, context.params.id).then(() => {
-            return getNonces(numberOfNonces).then((n) => {
+            return getNonces(numberOfNonces, network).then((n) => {
                 let payload = {
                     nonces: n,
                     election: data,
                     callback: COLLECTION_CREATE_ELECTION_TX + "/" + snap.ref.id
                 }
-                asyncInvokeLambda('netvote-create-election', payload, (error, lambData) => {
+                let lambdaName = (network === "netvote") ? 'private-create-election'  : 'netvote-create-election';
+                asyncInvokeLambda(lambdaName, payload, (error, lambData) => {
                     if (error) {
                         handleTxError(snap.ref, error);
                     } else {
@@ -1260,6 +1335,7 @@ exports.createElection = functions.firestore
             return handleTxError(snap.ref, e);
         });
     });
+*/
 
 // VOTER APIs
 const voterApp = express();
@@ -1364,6 +1440,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     }
     let update = false;
     let collection = COLLECTION_VOTE_TX;
+    let network;
     if (!voteBuff) {
         sendError(res, 400, "vote is required");
     } else {
@@ -1387,12 +1464,17 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 return false; //votedAlready(req.pool, voteId)
             }).then((votedAlready) => {
                 update = votedAlready;
+                return getDeployedElection(req.pool)
+            }).then((el) => { 
                 return gatewayNonce().then((nonce) => {
                     if (votedAlready) {
                         collection = COLLECTION_UPDATE_VOTE_TX
                     }
+                    network = el.network;
                     voteObj = {
                         address: req.pool,
+                        version: el.version,
+                        network: el.network,
                         update: update,
                         nonce: nonce,
                         voteId: voteId,
@@ -1408,8 +1490,8 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 });
             }).then((jobRef) => {
                 markJwtStatus(req.tokenKey, "voted").then(() => {
-
-                    asyncInvokeLambda('netvote-cast-vote', {
+                    let lambdaName = (network == "netvote") ? "private-cast-vote" : "netvote-cast-vote";
+                    asyncInvokeLambda(lambdaName, {
                         callback: collection + "/" + jobRef.id,
                         vote: voteObj
                     }, (error, data) => {
@@ -1419,7 +1501,6 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                             console.log("invocation completed, data:" + JSON.stringify(data))
                         }
                     });
-
                     res.send({ txId: jobRef.id, collection: collection });
                 })
             }).catch((e) => {
@@ -1437,9 +1518,38 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
 
 exports.vote = functions.https.onRequest(voterApp);
 
+const ethApp = express();
+const EthereumAuth = require('./web3-auth');
+const ethAuth = new EthereumAuth();
+ethApp.use(cors());
+
+ethApp.post('/auth/:address', ethAuth, (req, res) => {
+    if (req.ethauth) {
+        res.send(req.ethauth);
+    } else {
+        sendError(res, 500, "error registering address")
+    }
+});
+
+ethApp.post('/auth/:unsigned/:signed', ethAuth, (req, res) => {
+    if (req.ethauth && req.ethauth.address) {
+        admin.auth().createCustomToken(req.ethauth.address)
+            .then((customToken) => {
+                return res.send(customToken);
+            })
+            .catch((error) => {
+                return res.status(400).send(error);
+            });
+    } else {
+        unauthorized(res)
+    }
+});
+
+
 const api = express();
 api.use('/vote', voterApp);
 api.use('/admin', adminApp);
 api.use('/util', utilApp);
 api.use('/demo', demoApp);
+api.use('/eth', ethApp);
 exports.api = functions.https.onRequest(api);
