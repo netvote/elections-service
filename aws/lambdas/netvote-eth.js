@@ -11,9 +11,12 @@ web3.eth.defaultAccount = web3Provider.getAddress();
 const web3Defaults = {
     from: web3Provider.getAddress(),
     chainId: parseInt(process.env.CHAIN_ID),
-    gas: parseInt(process.env.GAS),
-    gasPrice: parseInt(process.env.GAS_PRICE)
+    gas: parseInt(process.env.GAS)
 };
+
+if(process.env.GAS_PRICE){
+    web3Defaults.gasPrice = parseInt(process.env.GAS_PRICE)
+}
 
 const toContractUrl = (name, version) => {
     return `https://s3.amazonaws.com/netvote-election-contracts/${version}/${name}.json`
@@ -28,7 +31,17 @@ const getAbi = async (name, version) => {
     c.setProvider(web3Provider)
     c.defaults(web3Defaults);
     contractCache[url] = c;
+    console.log(`loaded ${name}/${version} from S3`)
     return c;
+}
+
+const getVoteAbi = (version) => {
+    if(version <= 15){
+        return getAbi("Vote", version)
+    } else{
+        //17+ (there is no 16)
+        return getAbi("VoteAllowance", version)
+    }
 }
 
 module.exports = {
@@ -48,11 +61,14 @@ module.exports = {
         return getAbi("KeyHolder", version)
     },
     Vote: (version) => {
-        if(version <= 15){
-            return getAbi("Vote", version)
+        return getVoteAbi(version)
+    },
+    deployedVoteContract: async (version) => {
+        let vc = await getVoteAbi(version)
+        if(version < 17){
+            return vc.at(process.env.VOTE_ADDRESS);
         } else{
-            //17+ (there is no 16)
-            return getAbi("VoteAllowance", version)
+            return vc.deployed();
         }
     },
     VoteAllowance: (version) => {

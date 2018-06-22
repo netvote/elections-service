@@ -33,7 +33,7 @@ const addDemoElection = async(addr) =>{
     })
 }
 
-const addDeployedElections = async(addr, metadataLocation, version) =>{
+const addDeployedElections = async(addr, metadataLocation, uid, version) =>{
     return firebaseUpdater.createDoc("deployedElections", addr, {
         network: {
             stringValue: ETH_NETWORK
@@ -44,6 +44,9 @@ const addDeployedElections = async(addr, metadataLocation, version) =>{
         version: {
             integerValue: `${version}`
         },
+        uid: {
+            stringValue: uid
+        },
         demo: {
             // this lets anyone vote (for demos)
             booleanValue: true
@@ -53,12 +56,13 @@ const addDeployedElections = async(addr, metadataLocation, version) =>{
 
 const createElection = async(election, nonces, version) => {
     let gatewayAddress = nv.gatewayAddress();
-    let voteAddress = process.env.VOTE_ADDRESS; 
     version = (version) ? version : 15;
     BasicElection = await nv.BasicElection(version);
+    VoteContract = await nv.deployedVoteContract(version);
+
     let el = await BasicElection.new(
         web3.utils.sha3(election.uid),
-        voteAddress,
+        VoteContract.address,
         gatewayAddress,
         election.allowUpdates,
         gatewayAddress,
@@ -66,20 +70,28 @@ const createElection = async(election, nonces, version) => {
         gatewayAddress,
         election.autoActivate,
         {from: gatewayAddress, nonce: nonces[0]})
-
+    
+    console.log("created election: "+el.address);
     generateHashKey("hashSecrets", el.address)
 
-    Vote = await nv.Vote(version);
-    Vote.at(voteAddress).transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonces[1], from: nv.gatewayAddress()})
+    await VoteContract.transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonces[1], from: nv.gatewayAddress()})
+    console.log("transfered 1000 vote token to election: "+el.address)
 
     if(election.isPublic){
         let encryptionKey = await generateHashKey("encryptionKeys", el.address)
-        BasicElection.at(el.address).setPrivateKey(encryptionKey, {nonce: nonces[2], from: nv.gatewayAddress()})
+        await BasicElection.at(el.address).setPrivateKey(encryptionKey, {nonce: nonces[2], from: nv.gatewayAddress()})
+        console.log("released private key: "+el.address)
     } else{
         generateHashKey("encryptionKeys", el.address)
     }
+
+    if(version >= 18){
+        await VoteContract.addElection(el.address, {nonce: nonces[3], from: nv.gatewayAddress()})
+        console.log("added address to vote contract for event subscription")
+    }
+
     addDemoElection(el.address);
-    addDeployedElections(el.address, election.metadataLocation, version);
+    addDeployedElections(el.address, election.metadataLocation, election.uid, version);
     return el;
 }
 

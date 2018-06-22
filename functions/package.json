@@ -9,7 +9,6 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
-    "@netvote/elections-solidity": "^1.0.15",
     "ajv": "^6.1.1",
     "aws-sdk": "^2.222.1",
     "civic-sip-api": "^1.0.1",
@@ -25,11 +24,9 @@
     "njwt": "^0.4.0",
     "protobufjs": "^6.8.4",
     "qrcode": "^1.2.0",
-    "truffle-contract": "^3.0.1",
-    "truffle-hdwallet-provider": "0.0.3",
     "uport": "^0.6.2",
     "uuid": "^3.2.1",
-    "web3": "^0.20.4"
+    "web3-utils": "^1.0.0-beta.34"
   },
   "private": true
 }
