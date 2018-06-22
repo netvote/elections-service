@@ -57,6 +57,9 @@ module.exports = {
     BaseElection: (version) => {
         return getAbi("BaseElection", version)
     },
+    ElectionPhaseable: (version) => {
+        return getAbi("ElectionPhaseable", version)
+    },
     KeyHolder: (version) => {
         return getAbi("KeyHolder", version)
     },

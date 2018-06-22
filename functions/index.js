@@ -470,7 +470,7 @@ const toHmac = (value, key) => {
 const uidAuthorized = (uid, electionId) => {
     return new Promise(function (resolve, reject) {
         getDeployedElection(electionId).then(el=>{
-            return el.uid === uid;
+            resolve(el.uid === uid);
         })
     });
 };
@@ -985,7 +985,6 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
     }
     let deployedElection;
     let collection = COLLECTION_ACTIVATE_ELECTION_TX;
-
     return getDeployedElection(req.body.address).then((el) => { 
         deployedElection = el;
         return submitEthTransaction(collection, {
@@ -993,15 +992,21 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
             address: req.body.address
         })
     }).then((ref) => {
-        adminNonce().then((nonce) => {
+        adminNonce(deployedElection.network).then((nonce) => {
             let payload = {
                 address: req.body.address,
                 nonce: nonce,
                 version: deployedElection.version,
                 callback: collection + "/" + ref.id
             }
-            let lambdaName = (network === "netvote") ? 'private-activate-election'  : 'netvote-activate-election';
-            asyncInvokeLambda(lambdaName, payload);
+            let lambdaName = (deployedElection.network === "netvote") ? 'private-activate-election'  : 'netvote-activate-election';
+            asyncInvokeLambda(lambdaName, payload, (error, data) => {
+                if (error) {
+                    handleTxError(ref, error);
+                } else {
+                    console.log("invocation completed, data:" + JSON.stringify(data))
+                }
+            });
         })
 
         res.send({ txId: ref.id, collection: collection });
@@ -1026,15 +1031,21 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             address: req.body.address
         })
     }).then((ref) => {
-        adminNonce().then((nonce) => {
+        adminNonce(deployedElection.network).then((nonce) => {
             let payload = {
                 address: req.body.address,
                 nonce: nonce,
                 version: deployedElection.version,
                 callback: collection + "/" + ref.id
             }
-            let lambdaName = (network === "netvote") ? 'private-close-election'  : 'netvote-close-election';
-            asyncInvokeLambda(lambdaName, payload);
+            let lambdaName = (deployedElection.network === "netvote") ? 'private-close-election'  : 'netvote-close-election';
+            asyncInvokeLambda(lambdaName, payload, (error, data) => {
+                if (error) {
+                    handleTxError(ref, error);
+                } else {
+                    console.log("invocation completed, data:" + JSON.stringify(data))
+                }
+            });
         })
 
         res.send({ txId: ref.id, collection: collection });

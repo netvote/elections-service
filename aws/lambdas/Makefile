@@ -13,6 +13,14 @@ deploy_create_election:
 	aws lambda update-function-code --function-name netvote-create-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 	aws lambda update-function-code --function-name private-create-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
-deploy: deploy_cast_vote deploy_create_election
+deploy_activate_election:
+	aws lambda update-function-code --function-name netvote-activate-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name private-activate-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+
+deploy_close_election:
+	aws lambda update-function-code --function-name netvote-close-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name private-close-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+
+deploy: deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election
 
 publish: build upload deploy
