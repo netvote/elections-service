@@ -36,6 +36,7 @@ const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_VOTER_PIN_HASH_SECRET = "voterPinHashSecrets";
 const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
 const COLLECTION_NETWORK = "network";
+const COLLECTION_TALLY_TX = "transactionTally";
 const COLLECTION_VOTE_TX = "transactionCastVote";
 const COLLECTION_UPDATE_VOTE_TX = "transactionUpdateVote";
 const COLLECTION_ENCRYPTION_TX = "transactionPublishKey";
@@ -1363,8 +1364,43 @@ ethApp.post('/auth/:unsigned/:signed', ethAuth, (req, res) => {
     }
 });
 
+const tallyApp = express();
+tallyApp.use(cors());
+tallyApp.use(authHeaderDecorator);
+
+tallyApp.get('/election/:address', (req, res) => {
+    if (!req.params.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    const address = req.params.address;
+    let deployedElection;
+    return getDeployedElection(address).then((el) => {
+        deployedElection = el;
+        return submitEthTransaction(COLLECTION_TALLY_TX, {
+            address: address,
+            status: "pending"
+        });
+    }).then((jobRef) => {
+        const lambdaName = (deployedElection.network == "netvote") ? "private-tally-election" : "netvote-tally-election";
+
+        asyncInvokeLambda(lambdaName, {
+            callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
+            address: address,
+            version: deployedElection.version
+        }, (error, data) => {
+            if (error) {
+                handleTxError(jobRef, error);
+            } else {
+                console.log("invocation completed, data:" + JSON.stringify(data))
+            }
+        });
+        res.send({ txId: jobRef.id, collection: COLLECTION_TALLY_TX });
+    })   
+});
 
 const api = express();
+api.use('/tally', tallyApp);
 api.use('/vote', voterApp);
 api.use('/admin', adminApp);
 api.use('/util', utilApp);

@@ -15,7 +15,8 @@
       {"source": "/demo/**", "function": "api"},
       {"source": "/admin/**", "function": "api"},
       {"source": "/util/**", "function": "api"},
-      {"source": "/eth/**", "function": "api"}
+      {"source": "/eth/**", "function": "api"},
+      {"source": "/tally/**", "function": "api"}
     ]
   }
 }

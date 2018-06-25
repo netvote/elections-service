@@ -38,6 +38,11 @@ service cloud.firestore {
         allow write: if false;
     }
 
+    match /transactionTally/{id} {
+        allow read: if true;
+        allow write: if false;
+    }
+
     match /transactionCastVote/{id} {
         allow read: if true;
         allow write: if false;
