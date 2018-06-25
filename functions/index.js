@@ -1204,6 +1204,37 @@ voterApp.post('/qr/uport', uportIdCheck, (req, res) => {
     return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
 });
 
+// get a particular vote tx
+voterApp.get('/:address/:tx', (req, res) => {
+    if (!req.params.address) {
+        sendError(res, 400, "address is required");
+        return;
+    }
+    if (!req.params.tx) {
+        sendError(res, 400, "tx is required");
+        return;
+    }
+    const address = req.params.address;
+    const tx = req.params.tx;
+
+    return getDeployedElection(address).then((el) => {
+        const payload = {
+            address: address,
+            txId: tx,
+            version: el.version
+        }
+
+        let lambdaName = (el.network == "netvote") ? "private-get-vote" : "netvote-get-vote";
+        invokeLambda(lambdaName, payload, (err, data) => {
+            if(err){
+                sendError(res, 500, "lambda error: "+e.message)
+            } else {
+                res.send({ "results": JSON.parse(data.Payload) });
+            }
+        })
+    })
+});
+
 voterApp.get('/uport/request', (req, res) => {
     initUPort();
     uportCredential.createRequest({
@@ -1234,6 +1265,18 @@ voterApp.get('/qr/generated/:address', (req, res) => {
         }
     });
 });
+
+let invokeLambda = (name, payload, callback) => {
+    const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
+    const lambdaParams = {
+        FunctionName: name,
+        InvocationType: 'RequestResponse',
+        LogType: 'None',
+        Payload: JSON.stringify(payload)
+    };
+    callback = (callback) ? callback : lambdaCallback;
+    lambda.invoke(lambdaParams, callback);
+}
 
 let asyncInvokeLambda = (name, payload, callback) => {
     const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
