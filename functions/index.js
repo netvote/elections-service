@@ -1088,6 +1088,7 @@ adminApp.post('/election', (req, res) => {
             type: "basic",
             network: network,
             uid: req.user.uid,
+            metadataLocation: metadataLocation,
             version: v
         })
     }).then((ref) => {
@@ -1205,7 +1206,7 @@ voterApp.post('/qr/uport', uportIdCheck, (req, res) => {
 });
 
 // get a particular vote tx
-voterApp.get('/:address/:tx', (req, res) => {
+voterApp.get('/lookup/:address/:tx', (req, res) => {
     if (!req.params.address) {
         sendError(res, 400, "address is required");
         return;
