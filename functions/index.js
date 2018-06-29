@@ -447,12 +447,6 @@ const generateKeys = (uid, electionId, count) => {
     });
 };
 
-// const votedAlready = (addr, voteId) => {
-//     return BasePool.at(addr).votes(voteId).then((res) => {
-//         return res !== '';
-//     });
-// };
-
 const calculateRegKey = (electionId, key) => {
     return toHmac(electionId + ":" + key, regKeySecret);
 };
@@ -479,12 +473,7 @@ const uidAuthorized = (uid, electionId) => {
 const uportIdCheck = (req, res, next) => {
     initUPort();
     uportCredential.receive(req.token).then((result) => {
-        //console.log("uport="+JSON.stringify(result));
         req.token = result.address;
-        // if(result.pushToken && result.publicEncKey){
-        //     req.pushToken = result.pushToken;
-        //     req.publicEncKey = result.publicEncKey;
-        // }
 
         isDemoElection(req.body.address).then((demo) => {
             if (!demo) {
@@ -534,31 +523,6 @@ const voterIdCheck = (req, res, next) => {
         sendError(res, 500, e.message);
     });
 };
-
-// const tokenOwnerCheck = (req, res, next) => {
-//     initGateway();
-//     //TODO: check signature
-//     if (!req.body.owner) {
-//         sendError(res, 400, "owner (address) is required");
-//         return;
-//     }
-//     if (!req.body.address) {
-//         sendError(res, 400, "address (of election) is required");
-//         return;
-//     }
-
-//     //TODO: get balance at point in time rather than current balance
-//     TokenElection.at(req.body.address).tokenAddress().then((erc20address) => {
-//         return ERC20.at(erc20address).balanceOf(req.body.owner)
-//     }).then((bal) => {
-//         if (bal.toNumber() === 0) {
-//             sendError(res, 400, "This account has no balance on token");
-//         } else {
-//             req.weight = "" + web3.fromWei(bal.toNumber(), 'ether');
-//             return next();
-//         }
-//     });
-// };
 
 const utilKeyCheck = (req, res, next) => {
     if (!req.token || req.token !== utilKey) {
@@ -681,17 +645,6 @@ const encrypt = (text, electionId) => {
     });
 };
 
-// const updatesAreAllowed = (address) => {
-//     return BasePool.at(address).election((el) => {
-
-//     });
-// };
-
-const adminNonce = (network) => {
-    //TODO: when we separate addresses we can do so here
-    return gatewayNonce(network);
-};
-
 const getDeployedElection = (address) => {
     let db = admin.firestore();
     return db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(address).get().then((doc) => {
@@ -717,61 +670,6 @@ const latestContractVersion = (network) => {
         return doc.data().version;  
     })
 }
-
-const gatewayNonce = (network) => {
-    let db = admin.firestore();
-    let counterRef = db.collection(COLLECTION_NETWORK).doc(network);
-
-    return db.runTransaction((t) => {
-        return t.get(counterRef).then((doc) => {
-            if (!doc.exists) {
-                throw "Counter does not exist!";
-            }
-            let newNonce = doc.data().nonce + 1;
-            t.update(counterRef, { nonce: newNonce });
-            return Promise.resolve(newNonce);
-        });
-    })
-};
-
-// const web3GatewayNonce = () => {
-//     return new Promise(function (resolve, reject) {
-//         web3.eth.getTransactionCount(web3Provider.getAddress(), (err, res) => {
-//             resolve(res);
-//         });
-//     });
-// }
-
-// const sendGas = (addr, amount) => {
-//     return new Promise(function (resolve, reject) {
-//         gatewayNonce().then((nonce) => {
-//             try {
-//                 web3.eth.sendTransaction({
-//                     to: addr,
-//                     value: amount,
-//                     from: web3Provider.getAddress()
-//                 }, (err, res) => {
-//                     if (!err) {
-//                         resolve(res)
-//                     } else {
-//                         reject(err);
-//                     }
-//                 })
-//             } catch (e) {
-//                 reject(e);
-//             }
-//         })
-//     });
-// };
-
-// const inPhase = (address, phases) => {
-//     initGateway();
-//     return new Promise(function (resolve, reject) {
-//         ElectionPhaseable.at(address).electionPhase().then((phase) => {
-//             resolve(phases.indexOf(phase.toNumber()) > -1);
-//         });
-//     })
-// };
 
 const sendQr = (txt, res) => {
     initQr();
@@ -892,23 +790,6 @@ const demoApp = express();
 demoApp.use(cors());
 demoApp.use(cookieParser());
 
-// demoApp.post('/uport/push', (req, res) => {
-//     initUPort();
-//     return uportCredential.attest({
-//         claim: {customClaim: 12345},
-//         exp: new Date().getTime() + 2592000000
-//     }).then(attestationJWT => {
-//             uportCredential.push(req.body.token, req.body.key, {
-//                 sub: "2ovBoD33teH15Xy1GdXsKFuoGy4sEes4DDM",
-//                 url: "me.uport:add?attestation=" + attestationJWT,
-//                 message: "This is a test"
-//             }).then(()=>{
-//                 res.send({status:"ok"});
-//             })
-//         }
-//     );
-// });
-
 demoApp.get('/qr/election/:address', (req, res) => {
     initQr();
     if (!req.params.address) {
@@ -993,22 +874,19 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
             address: req.body.address
         })
     }).then((ref) => {
-        adminNonce(deployedElection.network).then((nonce) => {
-            let payload = {
-                address: req.body.address,
-                nonce: nonce,
-                version: deployedElection.version,
-                callback: collection + "/" + ref.id
+        let payload = {
+            address: req.body.address,
+            version: deployedElection.version,
+            callback: collection + "/" + ref.id
+        }
+        let lambdaName = (deployedElection.network === "netvote") ? 'private-activate-election'  : 'netvote-activate-election';
+        asyncInvokeLambda(lambdaName, payload, (error, data) => {
+            if (error) {
+                handleTxError(ref, error);
+            } else {
+                console.log("invocation completed, data:" + JSON.stringify(data))
             }
-            let lambdaName = (deployedElection.network === "netvote") ? 'private-activate-election'  : 'netvote-activate-election';
-            asyncInvokeLambda(lambdaName, payload, (error, data) => {
-                if (error) {
-                    handleTxError(ref, error);
-                } else {
-                    console.log("invocation completed, data:" + JSON.stringify(data))
-                }
-            });
-        })
+        });
 
         res.send({ txId: ref.id, collection: collection });
     }).catch((e) => {
@@ -1032,22 +910,19 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             address: req.body.address
         })
     }).then((ref) => {
-        adminNonce(deployedElection.network).then((nonce) => {
-            let payload = {
-                address: req.body.address,
-                nonce: nonce,
-                version: deployedElection.version,
-                callback: collection + "/" + ref.id
+        let payload = {
+            address: req.body.address,
+            version: deployedElection.version,
+            callback: collection + "/" + ref.id
+        }
+        let lambdaName = (deployedElection.network === "netvote") ? 'private-close-election'  : 'netvote-close-election';
+        asyncInvokeLambda(lambdaName, payload, (error, data) => {
+            if (error) {
+                handleTxError(ref, error);
+            } else {
+                console.log("invocation completed, data:" + JSON.stringify(data))
             }
-            let lambdaName = (deployedElection.network === "netvote") ? 'private-close-election'  : 'netvote-close-election';
-            asyncInvokeLambda(lambdaName, payload, (error, data) => {
-                if (error) {
-                    handleTxError(ref, error);
-                } else {
-                    console.log("invocation completed, data:" + JSON.stringify(data))
-                }
-            });
-        })
+        });
 
         res.send({ txId: ref.id, collection: collection });
     }).catch((e) => {
@@ -1075,15 +950,10 @@ adminApp.post('/election', (req, res) => {
 
     // 3 = create election, transfer vote, post encryption key
     // 2 = create election, transfer vote
-    let numberOfNonces = (isPublic) ? 3 : 2;
     
     let version;
     return latestContractVersion(network).then((v) => {
         version = v;
-        if(version >= 18){
-            //v18 onward also adds election to token contract for closing events
-            numberOfNonces++;
-        }
         return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
             type: "basic",
             network: network,
@@ -1093,11 +963,8 @@ adminApp.post('/election', (req, res) => {
         })
     }).then((ref) => {
         return atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id).then(() => {
-            return getNonces(numberOfNonces, network)
-        }).then((n) => {
             let payload = {
                 version: version,
-                nonces: n,
                 election: {
                     type: "basic",
                     allowUpdates: allowUpdates,
@@ -1161,17 +1028,6 @@ adminApp.post('/token/election', (req, res) => {
         sendError(res, 500, e.message);
     });
 });
-
-let getNonces = (num, network) => {
-    let noncePromises = []
-    for (let i = 0; i < num; i++) {
-        noncePromises.push(adminNonce(network))
-    }
-    return Promise.all(noncePromises).then((nonces)=>{
-        nonces.sort((a, b) => a - b);
-        return nonces;
-    });
-};
 
 // VOTER APIs
 const voterApp = express();
@@ -1337,23 +1193,20 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
                 encryptedVote = encryptedPayload;
                 return getDeployedElection(req.pool)
             }).then((el) => { 
-                return gatewayNonce(el.network).then((nonce) => {
-                    network = el.network;
-                    voteObj = {
-                        address: req.pool,
-                        version: el.version,
-                        network: el.network,
-                        nonce: nonce,
-                        voteId: voteId,
-                        encryptedVote: encryptedVote,
-                        passphrase: passphrase,
-                        tokenId: tokenId
-                    };
+                network = el.network;
+                voteObj = {
+                    address: req.pool,
+                    version: el.version,
+                    network: el.network,
+                    voteId: voteId,
+                    encryptedVote: encryptedVote,
+                    passphrase: passphrase,
+                    tokenId: tokenId
+                };
 
-                    return submitEthTransaction(COLLECTION_VOTE_TX, {
-                        voteId: voteId,
-                        status: "pending"
-                    });
+                return submitEthTransaction(COLLECTION_VOTE_TX, {
+                    voteId: voteId,
+                    status: "pending"
                 });
             }).then((jobRef) => {
                 markJwtStatus(req.tokenKey, "voted").then(() => {
