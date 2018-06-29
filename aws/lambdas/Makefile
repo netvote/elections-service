@@ -32,6 +32,10 @@ deploy_get_vote:
 	aws lambda update-function-code --function-name netvote-get-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 	aws lambda update-function-code --function-name private-get-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
-deploy: deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election deploy_tally_election deploy_get_vote
+deploy_add_observation:
+	aws lambda update-function-code --function-name private-add-observation --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name netvote-add-observation --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+
+deploy: deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election deploy_tally_election deploy_get_vote deploy_add_observation
 
 publish: build upload deploy

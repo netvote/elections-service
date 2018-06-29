@@ -1,6 +1,7 @@
 const firebaseUpdater = require("./firebase-updater.js");
 const crypto = require('crypto');
 const uuid = require('uuid/v4')
+const nonceCounter = require("./nonce-counter.js");
 
 const nv = require("./netvote-eth.js");
 const web3 = nv.web3();
@@ -60,6 +61,7 @@ const createElection = async(election, nonces, version) => {
     BasicElection = await nv.BasicElection(version);
     VoteContract = await nv.deployedVoteContract(version);
 
+    let nonce = await nonceCounter.getNonce(process.env.NETWORK);
     let el = await BasicElection.new(
         web3.utils.sha3(election.uid),
         VoteContract.address,
@@ -69,35 +71,41 @@ const createElection = async(election, nonces, version) => {
         election.metadataLocation,
         gatewayAddress,
         election.autoActivate,
-        {from: gatewayAddress, nonce: nonces[0]})
+        {from: gatewayAddress, nonce: nonce})
     
     console.log("created election: "+el.address);
-    generateHashKey("hashSecrets", el.address)
+    await generateHashKey("hashSecrets", el.address)
 
-    await VoteContract.transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonces[1], from: nv.gatewayAddress()})
+    nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    await VoteContract.transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
     console.log("transfered 1000 vote token to election: "+el.address)
 
     if(election.isPublic){
         let encryptionKey = await generateHashKey("encryptionKeys", el.address)
-        await BasicElection.at(el.address).setPrivateKey(encryptionKey, {nonce: nonces[2], from: nv.gatewayAddress()})
+        nonce = await nonceCounter.getNonce(process.env.NETWORK);
+        await BasicElection.at(el.address).setPrivateKey(encryptionKey, {nonce: nonce, from: nv.gatewayAddress()})
         console.log("released private key: "+el.address)
     } else{
         generateHashKey("encryptionKeys", el.address)
     }
 
     if(version >= 18){
-        await VoteContract.addElection(el.address, {nonce: nonces[3], from: nv.gatewayAddress()})
+        nonce = await nonceCounter.getNonce(process.env.NETWORK);
+        await VoteContract.addElection(el.address, {nonce: nonce, from: nv.gatewayAddress()})
         console.log("added address to vote contract for event subscription")
     }
 
-    addDemoElection(el.address);
-    addDeployedElections(el.address, election.metadataLocation, election.uid, version);
+    await addDemoElection(el.address);
+    console.log("added demo election")
+    await addDeployedElections(el.address, election.metadataLocation, election.uid, version);
+    console.log("added deployed election")
     return el;
 }
 
 exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
+    context.callbackWaitsForEmptyEventLoop = false;
 
     try {
         const tx = await createElection(event.election, event.nonces, event.version);
@@ -106,12 +114,14 @@ exports.handler = async (event, context, callback) => {
             status: "complete",
             address: tx.address
         }, true);
+        console.log("completed successfully")
         callback(null, "ok")
     }catch(e){
         console.error("error while transacting: ", e);
         await firebaseUpdater.updateStatus(event.callback, {
             status: "error"
         });
-        callback(e, "ok")
+        console.log("error, but dropping to avoid replay")
+        callback(null, "ok")
     }
 };

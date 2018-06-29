@@ -1,4 +1,5 @@
 const firebaseUpdater = require("./firebase-updater.js");
+const nonceCounter = require("./nonce-counter.js");
 
 const nv = require("./netvote-eth.js");
 
@@ -11,14 +12,16 @@ const votedAlready = async (addr, voteId, BasePool) => {
 
 const castVote = async(voteObj, BasePool) => {
     console.log("casting vote from "+nv.gatewayAddress())
-    let tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: voteObj.nonce, from: nv.gatewayAddress()})
+    const nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    let tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
     console.log("completed casting vote")
     return tx;
 };
 
 const updateVote = async(voteObj, BasePool) => {
     console.log("updating vote from "+nv.gatewayAddress())
-    let tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: voteObj.nonce, from: nv.gatewayAddress()})
+    const nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    let tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
     console.log("completed updating vote")
     return tx;
 };
@@ -26,6 +29,7 @@ const updateVote = async(voteObj, BasePool) => {
 exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
+    context.callbackWaitsForEmptyEventLoop = false;
 
     try {
         let version = event.vote.version ? event.vote.version : 15;

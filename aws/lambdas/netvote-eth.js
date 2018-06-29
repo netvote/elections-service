@@ -63,6 +63,10 @@ module.exports = {
     KeyHolder: (version) => {
         return getAbi("KeyHolder", version)
     },
+    Observances: (version) => {
+        //only available from v19
+        return getAbi("Observances", version)
+    },
     Vote: (version) => {
         return getVoteAbi(version)
     },
