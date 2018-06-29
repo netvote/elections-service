@@ -55,7 +55,7 @@ const addDeployedElections = async(addr, metadataLocation, uid, version) =>{
     })
 }
 
-const createElection = async(election, nonces, version) => {
+const createElection = async(election, version) => {
     let gatewayAddress = nv.gatewayAddress();
     version = (version) ? version : 15;
     BasicElection = await nv.BasicElection(version);
@@ -108,7 +108,7 @@ exports.handler = async (event, context, callback) => {
     context.callbackWaitsForEmptyEventLoop = false;
 
     try {
-        const tx = await createElection(event.election, event.nonces, event.version);
+        const tx = await createElection(event.election, event.version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
             status: "complete",
