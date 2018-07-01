@@ -1,4 +1,4 @@
-Elections Service APIs (Demo)
+Elections Service APIs
 ======================
 
 <img src="https://s3.amazonaws.com/netvote-docs/nv.png" alt="Logo"  height="25%" width="25%"/>
