@@ -1,5 +1,12 @@
 const nv = require("./netvote-eth.js");
+const ipfs = require("./netvote-ipfs.js")
 const nonceCounter = require("./nonce-counter.js");
+
+const submitPayloadToIPFS = async(payload) => {
+    let hash = await ipfs.putItem(payload)
+    console.log("added payload to IPFS, hash = "+hash)
+    return hash;
+}
 
 const submitObservance = async(scope, submitId, reference, timestamp, observances) => {
     const nonce = await nonceCounter.getNonce(process.env.NETWORK);
@@ -18,17 +25,22 @@ exports.handler = async (event, context, callback) => {
         const observances = await Observances.deployed();
         const scope = event.scope;
         const submitId = event.submitId ? event.submitId : event.scope;
-        const reference = event.reference;
+        let reference = event.reference;
+        const payload = event.payload;
         const timestamp = event.timestamp;
         
         if(!scope) {
             throw new Error("scope is required")
         }
-        if(!reference) {
-            throw new Error("reference is required")
+        if(!reference && !payload) {
+            throw new Error("reference or payload is required")
         }
         if(!timestamp) {
             throw new Error("timestamp is required")
+        }
+
+        if(payload){
+            reference = await submitPayloadToIPFS(payload);
         }
 
         const tx = await submitObservance(scope, submitId, reference, timestamp, observances);
