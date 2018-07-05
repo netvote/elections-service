@@ -920,10 +920,25 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             if (error) {
                 handleTxError(ref, error);
             } else {
-                console.log("invocation completed, data:" + JSON.stringify(data))
+                console.log("close invoked successfully, data:" + JSON.stringify(data))
+                let revealLambdaName = (deployedElection.network === "netvote") ? 'private-reveal-key'  : 'netvote-reveal-key';
+                getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) =>{
+                    payload = {
+                        key: key,
+                        address: req.body.address
+                    }
+                    asyncInvokeLambda(revealLambdaName, payload, (error, data) => {
+                        if (error) {
+                            handleTxError(ref, error);
+                        } else {
+                            console.log("reveal invoked successfully, data:" + JSON.stringify(data))
+                            removeHashKey(req.body.address, COLLECTION_HASH_SECRETS)
+                        }
+                    });
+                })
             }
         });
-
+    
         res.send({ txId: ref.id, collection: collection });
     }).catch((e) => {
         console.error(e);

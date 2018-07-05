@@ -20,6 +20,10 @@ deploy_activate_election:
 	aws lambda update-function-code --function-name netvote-activate-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 	aws lambda update-function-code --function-name private-activate-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
+deploy_reveal_key:
+	aws lambda update-function-code --function-name netvote-reveal-key --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name private-reveal-key --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+
 deploy_close_election:
 	aws lambda update-function-code --function-name netvote-close-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 	aws lambda update-function-code --function-name private-close-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
@@ -36,6 +40,6 @@ deploy_add_observation:
 	aws lambda update-function-code --function-name private-add-observation --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 	aws lambda update-function-code --function-name netvote-add-observation --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
-deploy: deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election deploy_tally_election deploy_get_vote deploy_add_observation
+deploy: deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election deploy_tally_election deploy_get_vote deploy_add_observation deploy_reveal_key
 
 publish: build upload deploy
