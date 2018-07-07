@@ -34,10 +34,18 @@ const addDemoElection = async(addr) =>{
     })
 }
 
-const addDeployedElections = async(addr, metadataLocation, uid, version) =>{
-    return firebaseUpdater.createDoc("deployedElections", addr, {
+const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate) =>{
+    const status = (autoActivate) ? "voting" : "building";
+
+    return firebaseUpdater.createDoc("deployedElections", electionId, {
         network: {
             stringValue: ETH_NETWORK
+        },
+        status: {
+            stringValue: status
+        },
+        address: {
+            stringValue: addr
         },
         metadataLocation: {
             stringValue: metadataLocation
@@ -45,17 +53,19 @@ const addDeployedElections = async(addr, metadataLocation, uid, version) =>{
         version: {
             integerValue: `${version}`
         },
+        resultsAvailable: {
+            booleanValue: isPublic
+        },
         uid: {
             stringValue: uid
         },
         demo: {
-            // this lets anyone vote (for demos)
             booleanValue: true
         }
     })
 }
 
-const createElection = async(election, version) => {
+const createElection = async(electionId, election, version) => {
     let gatewayAddress = nv.gatewayAddress();
     version = (version) ? version : 15;
     BasicElection = await nv.BasicElection(version);
@@ -73,32 +83,26 @@ const createElection = async(election, version) => {
         election.autoActivate,
         {from: gatewayAddress, nonce: nonce})
     
-    console.log("created election: "+el.address);
-    await generateHashKey("hashSecrets", el.address)
+    console.log("created election: "+el.address+", id="+electionId);
+
+    await generateHashKey("hashSecrets", electionId)
 
     nonce = await nonceCounter.getNonce(process.env.NETWORK);
     await VoteContract.transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
     console.log("transfered 1000 vote token to election: "+el.address)
 
-    if(election.isPublic){
-        let encryptionKey = await generateHashKey("encryptionKeys", el.address)
+    let encryptionKey = await generateHashKey("encryptionKeys", electionId)
+    if (election.isPublic) {
         nonce = await nonceCounter.getNonce(process.env.NETWORK);
         await BasicElection.at(el.address).setPrivateKey(encryptionKey, {nonce: nonce, from: nv.gatewayAddress()})
         console.log("released private key: "+el.address)
-    } else{
-        generateHashKey("encryptionKeys", el.address)
     }
 
-    if(version >= 18){
-        nonce = await nonceCounter.getNonce(process.env.NETWORK);
-        await VoteContract.addElection(el.address, {nonce: nonce, from: nv.gatewayAddress()})
-        console.log("added address to vote contract for event subscription")
-    }
+    nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    await VoteContract.addElection(el.address, {nonce: nonce, from: nv.gatewayAddress()})
+    console.log("added address to vote contract for event subscription")
 
-    await addDemoElection(el.address);
-    console.log("added demo election")
-    await addDeployedElections(el.address, election.metadataLocation, election.uid, version);
-    console.log("added deployed election")
+    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate);
     return el;
 }
 
@@ -108,11 +112,12 @@ exports.handler = async (event, context, callback) => {
     context.callbackWaitsForEmptyEventLoop = false;
 
     try {
-        const tx = await createElection(event.election, event.version);
+        let electionId = uuid();
+        const tx = await createElection(electionId, event.election, event.version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
             status: "complete",
-            address: tx.address
+            address: electionId
         }, true);
         console.log("completed successfully")
         callback(null, "ok")

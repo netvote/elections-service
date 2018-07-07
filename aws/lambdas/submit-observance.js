@@ -20,7 +20,7 @@ exports.handler = async (event, context, callback) => {
 
     //TODO: increment nonce
     try {
-        let version = event.version ? event.version : 20;
+        let version = event.version ? event.version : 21;
         const Observances = await nv.Observances(version);
         const observances = await Observances.deployed();
         const scope = event.scope;

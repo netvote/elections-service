@@ -17,6 +17,9 @@ exports.handler = async (event, context, callback) => {
         let version = event.version ? event.version : 15;
         const BaseElection = await nv.BaseElection(version);
         const tx = await postEncryptionKey(event.address, event.key, BaseElection);
+        await firebaseUpdater.updateDeployedElection(event.electionId, {
+            resultsAvailable: true
+        });
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"

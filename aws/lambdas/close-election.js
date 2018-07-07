@@ -18,6 +18,9 @@ exports.handler = async (event, context, callback) => {
         const ElectionPhaseable = await nv.ElectionPhaseable(version);
         const tx = await closeElection(event.address, ElectionPhaseable);
         console.log("closed election: "+event.address)
+        await firebaseUpdater.updateDeployedElection(event.electionId, {
+            status: "closed",
+        });
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"

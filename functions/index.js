@@ -365,16 +365,14 @@ const submitEthTransaction = (collection, obj) => {
 
 const getPins = (electionId, voterId) => {
     let pins = {}
-    let db = admin.firestore();
-
-    return db.collection(COLLECTION_DEMO_ELECTIONS).doc(electionId).get().then((doc) => {
-        if (doc.exists) {
+    return getDeployedElection(electionId).then((el) => {
+        if (el.demo) {
             return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret) => {
-                if (doc.data().pin) {
-                    pins.pin = toHmac(doc.data().pin, secret);
+                if (el.pin) {
+                    pins.pin = toHmac(el.pin, secret);
                 }
-                if (doc.data().decoyPin) {
-                    pins.decoyPin = toHmac(doc.data().decoyPin, secret);
+                if (el.decoyPin) {
+                    pins.decoyPin = toHmac(el.decoyPin, secret);
                 }
                 return pins;
             })
@@ -391,14 +389,7 @@ const isDemoElection = (electionId) => {
             if (doc.exists) {
                 resolve(doc.data().demo);
             } else{
-                //deprecated way of defining demo election
-                db.collection(COLLECTION_DEMO_ELECTIONS).doc(electionId).get().then((doc) => {
-                    if (doc.exists) {
-                        resolve(doc.data().enabled);
-                    } else {
-                        resolve(false);
-                    }
-                });
+                resolve(false);
             }
         })
     })
@@ -649,11 +640,7 @@ const getDeployedElection = (address) => {
     let db = admin.firestore();
     return db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(address).get().then((doc) => {
         if (!doc.exists) {
-            console.warn("election didn't have deployed entry, returning defaults")
-            return {
-                network: "ropsten",
-                version: 15
-            }
+            throw "Deployed Election does not exist: "+address
         }
         return doc.data();
     })
@@ -867,15 +854,18 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
     }
     let deployedElection;
     let collection = COLLECTION_ACTIVATE_ELECTION_TX;
-    return getDeployedElection(req.body.address).then((el) => { 
+    let electionId = req.body.address;
+    return getDeployedElection(electionId).then((el) => { 
         deployedElection = el;
         return submitEthTransaction(collection, {
             status: 'pending',
-            address: req.body.address
+            address: el.address,
+            electionId: electionId
         })
     }).then((ref) => {
         let payload = {
-            address: req.body.address,
+            electionId: electionId,
+            address: deployedElection.address,
             version: deployedElection.version,
             callback: collection + "/" + ref.id
         }
@@ -902,16 +892,18 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
     }
     let deployedElection;
     let collection = COLLECTION_CLOSE_ELECTION_TX;
-
+    let electionId = req.body.address;
     return getDeployedElection(req.body.address).then((el) => { 
         deployedElection = el;
         return submitEthTransaction(collection, {
             status: 'pending',
-            address: req.body.address
+            address: deployedElection.address,
+            electionId: electionId
         })
     }).then((ref) => {
         let payload = {
-            address: req.body.address,
+            electionId: electionId,
+            address: deployedElection.address,
             version: deployedElection.version,
             callback: collection + "/" + ref.id
         }
@@ -922,17 +914,18 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             } else {
                 console.log("close invoked successfully, data:" + JSON.stringify(data))
                 let revealLambdaName = (deployedElection.network === "netvote") ? 'private-reveal-key'  : 'netvote-reveal-key';
-                getHashKey(req.body.address, COLLECTION_ENCRYPTION_KEYS).then((key) =>{
+                getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS).then((key) =>{
                     payload = {
                         key: key,
-                        address: req.body.address
+                        electionId: electionId,
+                        address: deployedElection.address
                     }
                     asyncInvokeLambda(revealLambdaName, payload, (error, data) => {
                         if (error) {
                             handleTxError(ref, error);
                         } else {
                             console.log("reveal invoked successfully, data:" + JSON.stringify(data))
-                            removeHashKey(req.body.address, COLLECTION_HASH_SECRETS)
+                            removeHashKey(electionId, COLLECTION_HASH_SECRETS)
                         }
                     });
                 })
@@ -1091,7 +1084,7 @@ voterApp.get('/lookup/:address/:tx', (req, res) => {
 
     return getDeployedElection(address).then((el) => {
         const payload = {
-            address: address,
+            address: el.address,
             txId: tx,
             version: el.version
         }
@@ -1181,6 +1174,7 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
     let voteBuff;
     let encryptedVote;
     let tokenId;
+    let electionId = req.pool;
     try {
         voteBuff = Buffer.from(encodedVote, 'base64');
     } catch (e) {
@@ -1199,18 +1193,18 @@ voterApp.post('/cast', voterTokenCheck, (req, res) => {
         }).then((vote) => {
             let voteId = "";
             const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-            getHashKey(req.pool, COLLECTION_HASH_SECRETS).then((secret) => {
-                const voteIdHmac = toHmac(req.pool + ":" + req.voter, secret);
+            getHashKey(electionId, COLLECTION_HASH_SECRETS).then((secret) => {
+                const voteIdHmac = toHmac(electionId + ":" + req.voter, secret);
                 voteId = web3.sha3(voteIdHmac);
                 tokenId = web3.sha3(toHmac(req.tokenKey, secret));
-                return encrypt(vote, req.pool);
+                return encrypt(vote, electionId);
             }).then((encryptedPayload) => {
                 encryptedVote = encryptedPayload;
-                return getDeployedElection(req.pool)
+                return getDeployedElection(electionId)
             }).then((el) => { 
                 network = el.network;
                 voteObj = {
-                    address: req.pool,
+                    address: el.address,
                     version: el.version,
                     network: el.network,
                     voteId: voteId,
@@ -1290,7 +1284,7 @@ tallyApp.get('/election/:address', (req, res) => {
     return getDeployedElection(address).then((el) => {
         deployedElection = el;
         return submitEthTransaction(COLLECTION_TALLY_TX, {
-            address: address,
+            address: el.address,
             status: "pending"
         });
     }).then((jobRef) => {
@@ -1298,7 +1292,7 @@ tallyApp.get('/election/:address', (req, res) => {
 
         asyncInvokeLambda(lambdaName, {
             callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
-            address: address,
+            address: deployedElection.address,
             version: deployedElection.version
         }, (error, data) => {
             if (error) {

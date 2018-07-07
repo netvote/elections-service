@@ -16,9 +16,11 @@ exports.handler = async (event, context, callback) => {
     try {
         let version = event.version ? event.version : 15;
         const ElectionPhaseable = await nv.ElectionPhaseable(version);
-        const nonce = await nonce.getNonce(process.env.NETWORK);
         const tx = await activateElection(event.address, ElectionPhaseable);
         console.log("activated election: "+event.address)
+        await firebaseUpdater.updateDeployedElection(event.electionId, {
+            status: "voting",
+        });
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"

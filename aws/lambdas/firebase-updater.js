@@ -12,6 +12,59 @@ const getCredential = async() => {
     return await jwtClient.authorize();
 }
 
+const updateStatus = async(doc, updates, completeTime) => {
+    if(!doc){
+        console.log("skipping updateStatus, no callback specified");
+        return;
+    }
+
+    let updateMask = completeTime ? "updateMask.fieldPaths=completeTime": "";
+
+    let fields = completeTime ? {
+        completeTime: {
+            integerValue: new Date().getTime()
+        }
+    } : {}
+
+    for (var key in updates) {
+        if (updates.hasOwnProperty(key)) {
+            if (updateMask !== "") {
+                updateMask += "&"
+            }
+            updateMask += "updateMask.fieldPaths="+key
+            if(typeof(updates[key]) === "boolean"){
+                fields[key] = {
+                    booleanValue: updates[key]
+                }
+            } else { 
+                fields[key] = {
+                    stringValue: updates[key]
+                }
+            }
+        }
+    }
+
+    let credential = await getCredential();
+
+    let options = {
+        method: 'PATCH',
+        uri: 'https://firestore.googleapis.com/v1beta1/projects/netvote2/databases/(default)/documents/'+doc+"?"+updateMask,
+        body: {
+            fields: fields
+        },
+        headers: {
+            Authorization: "Bearer "+credential.access_token
+        },
+        json: true
+    };
+
+    try{
+        await rp(options);
+    }catch(e){
+        console.error("error while posting callback, ignoring", e)
+    }
+}
+
 module.exports = {
 
     createDoc: async(collection, id, obj) => {
@@ -31,51 +84,11 @@ module.exports = {
         await rp(options);
     },
 
-    updateStatus: async(doc, updates, completeTime) => {
-        if(!doc){
-            console.log("skipping updateStatus, no callback specified");
-            return;
-        }
+    updateDeployedElection: async(address, updates) => {
+        return await updateStatus(`deployedElections/${address}`, updates, false);
+    },
 
-        let updateMask = completeTime ? "updateMask.fieldPaths=completeTime": "";
-
-        let fields = completeTime ? {
-            completeTime: {
-                integerValue: new Date().getTime()
-            }
-        } : {}
-
-
-        for (var key in updates) {
-            if (updates.hasOwnProperty(key)) {
-                if (updateMask !== "") {
-                    updateMask += "&"
-                }
-                updateMask += "updateMask.fieldPaths="+key
-                fields[key] = {
-                    stringValue: updates[key]
-                }
-            }
-        }
-
-        let credential = await getCredential();
-
-        let options = {
-            method: 'PATCH',
-            uri: 'https://firestore.googleapis.com/v1beta1/projects/netvote2/databases/(default)/documents/'+doc+"?"+updateMask,
-            body: {
-                fields: fields
-            },
-            headers: {
-                Authorization: "Bearer "+credential.access_token
-            },
-            json: true
-        };
-
-        try{
-            await rp(options);
-        }catch(e){
-            console.error("error while posting callback, ignoring", e)
-        }
+    updateStatus: async(doc, updates, completeTime) => { 
+        return await updateStatus(doc, updates, completeTime);
     }
 }
