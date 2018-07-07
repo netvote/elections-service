@@ -15,13 +15,13 @@ Election Flow
 -------------------
 ### Election Setup
 1. Create ballot metadata and post to IPFS (no API)
-2. Create election with IPFS reference, and save off address for QR (API)
+2. Create election with IPFS reference, and save off electionId for QR (API)
 3. Create Voter Keys (via API)
 4. Distribute Voter Keys in QRs (directly, no API)
 5. Activate Election (if not auto-activated)
 
 ### Voting
-6. Scan QR containing election ethereum address
+6. Scan QR containing election electionId
 7. Make selections in application
 8. Scan QR containing Voter Key, exchange key for JWT Token
 9. Submit vote with JWT Token
@@ -51,10 +51,10 @@ Authorization: Bearer VOTER-KEY-HERE
 Body:
 ```
 {
-	"address": "0xethereum-address"
+	"electionId": "electionId"
 }
 ```
-- **address**: (required) the address of the voter pool contract (for `BasicElection` contracts, its the election address)
+- **electionId**: (required) the electionId of the `BasicElection` contract
 
 Returns:
 ```
@@ -93,37 +93,8 @@ Returns:
 Note: 
 - The firebase collection reference can be polled for completion.  (obj.status = complete) 
 
-### POST /vote/update
-
-Casts an UPDATE vote for the election.  This update can only be called if vote has already been cast.
-
-Header
-```
-Authorization: Bearer JWT-TOKEN
-```
-Body:
-```
-{
-	"vote": "base64-of-serialized-proto",
-	"passphrase": "any text",
-	"pushToken": "abc123"
-}
-```
-- **vote**: (required) this is a BASE64-encoded serialized BallotVotes message from [Vote.proto](https://github.com/netvote/elections-solidity/blob/master/protocol/vote.proto)
-- **passphrase**: (optional) allows a voter to identify their vote on the blockchain without decrypting (pre-close)
-- **pushToken**: (optional) API will kindly send a push message to voter when vote has been cast
-
-Returns:
-```
-{"txId":"OBJECT-REFERENCE","collection":"transactionUpdateVote"}
-```
-Note: 
-- The firebase collection reference can be polled for completion.  (obj.status = complete) 
-
 Admin APIs
 -------------------
-
-Note: these are *primarily* for demo purposes.  We expect standard elections to be fully-DApp driven.  There may be a case where we support a service-like experience.
 
 ### POST /admin/election
 
@@ -135,13 +106,15 @@ Body:
 	"autoActivate": true,
 	"metadataLocation": "ipfs-address",
 	"allowUpdates": true,
-	"isPublic": true
+	"isPublic": true,
+	"network": "ropsten or netvote"
 }
 ```
 - **autoActivate**: (optional) allow voting immediately
-- **metadataLocation**: (required) address of ballot metadata on IPFS
+- **metadataLocation**: (required) electionId of ballot metadata on IPFS
 - **allowUpdates**: (optional) allow voters to update their vote after the fact (enforced on chain)
 - **isPublic**: (optional) generate and post the encryption key to the ballot immediately so tallying can occur during the election
+- **network**: (optional) deploy to either ropsten (eth test net) or netvote (private proof-of-authority network)
 
 Returns:
 ```
@@ -161,11 +134,11 @@ NOTE:
 Body:
 ```
 {
-	"address": "0xethereum-address",
+	"electionId": "electionId",
 	"count": 1
 }
 ```
-- **address**: (required) address of election on ethereum
+- **electionId**: (required) electionId of election
 - **count**: (required) number of keys to create in this request
 
 Returns:
@@ -173,8 +146,7 @@ Returns:
 ["key1", "key2"...]
 ```
 
-The response is the only time these keys are visible.  The admin must ensure these are delivered to voters correctly.
-
+The response is the only time these keys are visible.  The admin must ensure these are delivered to voters safely and correctly.
 
 ### POST /admin/election/activate
 
@@ -187,43 +159,47 @@ NOTE:
 Body:
 ```
 {
-	"address": "0xethereum-address"
+	"electionId": "electionId"
 }
 ```
-- **address**: (required) address of election on ethereum
+- **electionId**: (required) electionId of election
 
 ### POST /admin/election/close
 
-This will permanently close the election (no more votes allowed).
+This will do the following: 
+1. Close the election to prevent further voting
+2. Post the encryption key to the election contract to allow for vote reveal. 
+3. Delete the hashing secret for the election to preserve anonymity even in full-collusion cases.
+
+NOTE:
+- This will permanently close the election (no more votes allowed).  This is irreversable.
 
 NOTE: the UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.
 
 Body:
 ```
 {
-	"address": "0xethereum-address"
+	"electionId": "electionId"
 }
 ```
-- **address**: (required) address of election on ethereum
+- **electionId**: (required) electionId of election
 
-### POST /admin/election/encryption
+### POST /admin/election/tally
 
 This will do the following: 
-1. Post the encryption key to the election contract to allow for vote reveal. 
-2. Delete the hashing secret for the election to preserve anonymity even in full-collusion cases.
+1. Start a tally of the election
+2. Return the firestore collection to listen on for changes.
 
 NOTE: 
-- The UID must be [authorized](https://github.com/netvote/elections-solidity/blob/master/contracts/auth/ExternalAuthorizable.sol) by the election contract.  
-- The contract stores web3.sha3(uid) as the reference
-- The election must be either closed OR not yet activated 
+- If the election is not ready to be tallied, you'll get a 409 back
 
 Body:
 ```
 {
-	"address": "0xethereum-address"
+	"electionId": "electionId"
 }
 ```
-- **address**: (required) address of election on ethereum
+- **electionId**: (required) electionId of election
 
 Contributing
 -------------------

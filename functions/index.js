@@ -310,7 +310,8 @@ const validateVote = (vote, poolAddress) => {
 */
 
 const electionOwnerCheck = (req, res, next) => {
-    uidAuthorized(req.user.uid, req.body.address).then((match) => {
+    let electionId = req.body.electionId || req.body.address;
+    uidAuthorized(req.user.uid, electionId).then((match) => {
         if (match) {
             return next();
         }
@@ -325,14 +326,6 @@ const removeHashKey = (electionId, collection) => {
     let db = admin.firestore();
     const electionHmac = toHmac(electionId, storageHashSecret);
     return db.collection(collection).doc(electionHmac).delete();
-};
-
-const submitEncryptTx = (address, key, deleteHash) => {
-    return submitEthTransaction(COLLECTION_ENCRYPTION_TX, {
-        address: address,
-        key: key,
-        deleteHash: deleteHash
-    });
 };
 
 const submitVoteTx = (address, voteId, encryptedVote, passphrase, pushToken, tokenId) => {
@@ -463,10 +456,11 @@ const uidAuthorized = (uid, electionId) => {
 
 const uportIdCheck = (req, res, next) => {
     initUPort();
+    let electionId = req.body.electionId || req.body.address;
     uportCredential.receive(req.token).then((result) => {
         req.token = result.address;
 
-        isDemoElection(req.body.address).then((demo) => {
+        isDemoElection(electionId).then((demo) => {
             if (!demo) {
                 return voterIdCheck(req, res, next);
             }
@@ -480,15 +474,16 @@ const uportIdCheck = (req, res, next) => {
 
 const civicIdCheck = (req, res, next) => {
     initCivic();
-    if (!req.body.address) {
-        sendError(res, 400, "address (of election) is required");
+    let electionId = req.body.electionId || req.body.address;
+    if (!electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
     let civicJwt = req.token;
     civicClient.exchangeCode(civicJwt)
         .then((userData) => {
             req.token = userData.userId;
-            isDemoElection(req.body.address).then((demo) => {
+            isDemoElection(electionId).then((demo) => {
                 if (!demo) {
                     return voterIdCheck(req, res, next);
                 }
@@ -502,11 +497,11 @@ const civicIdCheck = (req, res, next) => {
 
 const voterIdCheck = (req, res, next) => {
     let key = req.token;
-    let address = req.body.address;
-    let hmac = calculateRegKey(address, key);
+    let electionId = req.body.electionId || req.body.address;
+    let hmac = calculateRegKey(electionId, key);
     let db = admin.firestore();
     db.collection(COLLECTION_VOTER_IDS).doc(hmac).get().then((doc) => {
-        if (doc.exists && doc.data().pool === address) {
+        if (doc.exists && doc.data().pool === electionId) {
             return next();
         }
         unauthorized(res);
@@ -777,50 +772,50 @@ const demoApp = express();
 demoApp.use(cors());
 demoApp.use(cookieParser());
 
-demoApp.get('/qr/election/:address', (req, res) => {
+demoApp.get('/qr/election/:electionId', (req, res) => {
     initQr();
-    if (!req.params.address) {
-        sendError(res, 400, "address is required");
+    if (!req.params.electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
-    sendQr(req.params.address, res);
+    sendQr(req.params.electionId, res);
 })
 
-demoApp.get('/key/:address', (req, res) => {
-    if (!req.params.address) {
-        sendError(res, 400, "address is required");
+demoApp.get('/key/:electionId', (req, res) => {
+    if (!req.params.electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
-    return isDemoElection(req.params.address).then((allowed) => {
+    return isDemoElection(req.params.electionId).then((allowed) => {
         if (allowed) {
-            generateKeys("demo", req.params.address, 1).then((keys) => {
+            generateKeys("demo", req.params.electionId, 1).then((keys) => {
                 res.send({ key: keys[0] });
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
             });
         } else {
-            sendError(res, 403, req.params.address + " is not a demo election");
+            sendError(res, 403, req.params.electionId + " is not a demo election");
         }
     });
 });
 
-demoApp.get('/qr/key/:address', (req, res) => {
+demoApp.get('/qr/key/:electionId', (req, res) => {
     initQr();
-    if (!req.params.address) {
-        sendError(res, 400, "address is required");
+    if (!req.params.electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
-    return isDemoElection(req.params.address).then((allowed) => {
+    return isDemoElection(req.params.electionId).then((allowed) => {
         if (allowed) {
-            generateKeys("demo", req.params.address, 1).then((keys) => {
+            generateKeys("demo", req.params.electionId, 1).then((keys) => {
                 sendQr(keys[0], res);
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
             });
         } else {
-            sendError(res, 403, req.params.address + " is not a demo election");
+            sendError(res, 403, req.params.electionId + " is not a demo election");
         }
     });
 });
@@ -831,15 +826,16 @@ adminApp.use(cors());
 adminApp.use(cookieParser());
 adminApp.use(validateFirebaseIdToken);
 adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
-    if (!req.body.address || !req.body.count) {
-        sendError(res, 400, "count & address are required");
+    let electionId = req.body.electionId || req.body.address;
+    if (!electionId || !req.body.count) {
+        sendError(res, 400, "count & electionId are required");
         return;
     }
     if (req.body.count < 1 || req.body.count > 100) {
         sendError(res, 400, "count must be between 1 and 100");
         return;
     }
-    generateKeys(req.user.uid, req.body.address, req.body.count).then((keys) => {
+    generateKeys(req.user.uid, electionId, req.body.count).then((keys) => {
         res.send(keys);
     }).catch((e) => {
         console.error(e);
@@ -848,13 +844,13 @@ adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
 });
 
 adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
-    if (!req.body.address) {
-        sendError(res, 400, "address is required");
+    let electionId = req.body.electionId || req.body.address;
+    if (!electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
     let deployedElection;
     let collection = COLLECTION_ACTIVATE_ELECTION_TX;
-    let electionId = req.body.address;
     return getDeployedElection(electionId).then((el) => { 
         deployedElection = el;
         return submitEthTransaction(collection, {
@@ -886,14 +882,15 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
 });
 
 adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
-    if (!req.body.address) {
-        sendError(res, 400, "address is required");
+    let electionId = req.body.electionId || req.body.address;
+    if (!electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
     let deployedElection;
     let collection = COLLECTION_CLOSE_ELECTION_TX;
-    let electionId = req.body.address;
-    return getDeployedElection(req.body.address).then((el) => { 
+    
+    return getDeployedElection(electionId).then((el) => { 
         deployedElection = el;
         return submitEthTransaction(collection, {
             status: 'pending',
@@ -1043,46 +1040,51 @@ voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
 
 voterApp.post('/auth', voterIdCheck, (req, res) => {
-    return createVoterJwt(req.body.address, req.token).then((tok) => {
+    let electionId = req.body.electionId || req.body.address;
+    return createVoterJwt(electionId, req.token).then((tok) => {
         res.send({ token: tok });
     })
 });
 
 voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
-    return createVoterJwt(req.body.address, req.token).then((tok) => {
+    let electionId = req.body.electionId || req.body.address;
+    return createVoterJwt(electionId, req.token).then((tok) => {
         res.send({ token: tok });
     })
 });
 
 // returns QR
 voterApp.post('/qr/key', voterIdCheck, (req, res) => {
-    return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
+    let electionId = req.body.electionId || req.body.address;
+    return sendQrJwt(electionId, req.token, req.pushToken, req.publicEncKey, res);
 });
 
 // returns QR
 voterApp.post('/qr/civic', civicIdCheck, (req, res) => {
-    return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
+    let electionId = req.body.electionId || req.body.address;
+    return sendQrJwt(electionId, req.token, req.pushToken, req.publicEncKey, res);
 });
 
 // returns QR
 voterApp.post('/qr/uport', uportIdCheck, (req, res) => {
-    return sendQrJwt(req.body.address, req.token, req.pushToken, req.publicEncKey, res);
+    let electionId = req.body.electionId || req.body.address;
+    return sendQrJwt(electionId, req.token, req.pushToken, req.publicEncKey, res);
 });
 
 // get a particular vote tx
-voterApp.get('/lookup/:address/:tx', (req, res) => {
-    if (!req.params.address) {
-        sendError(res, 400, "address is required");
+voterApp.get('/lookup/:electionId/:tx', (req, res) => {
+    if (!req.params.electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
     if (!req.params.tx) {
         sendError(res, 400, "tx is required");
         return;
     }
-    const address = req.params.address;
+    const electionId = req.params.electionId;
     const tx = req.params.tx;
 
-    return getDeployedElection(address).then((el) => {
+    return getDeployedElection(electionId).then((el) => {
         const payload = {
             address: el.address,
             txId: tx,
@@ -1111,22 +1113,22 @@ voterApp.get('/uport/request', (req, res) => {
 });
 
 // returns QR: only for demo, generates a voteId for convenience
-voterApp.get('/qr/generated/:address', (req, res) => {
+voterApp.get('/qr/generated/:electionId', (req, res) => {
     initQr();
-    if (!req.params.address) {
-        sendError(res, 400, "address is required");
+    if (!req.params.electionId) {
+        sendError(res, 400, "electionId is required");
         return;
     }
-    return isDemoElection(req.params.address).then((allowed) => {
+    return isDemoElection(req.params.electionId).then((allowed) => {
         if (allowed) {
-            generateKeys("demo", req.params.address, 1).then((keys) => {
-                sendQrJwt(req.params.address, keys[0], undefined, undefined, res);
+            generateKeys("demo", req.params.electionId, 1).then((keys) => {
+                sendQrJwt(req.params.electionId, keys[0], undefined, undefined, res);
             }).catch((e) => {
                 console.error(e);
                 sendError(res, 500, e.message);
             });
         } else {
-            sendError(res, 403, req.params.address + " is not a demo election");
+            sendError(res, 403, req.params.electionId + " is not a demo election");
         }
     });
 });
@@ -1274,14 +1276,14 @@ const tallyApp = express();
 tallyApp.use(cors());
 tallyApp.use(authHeaderDecorator);
 
-tallyApp.get('/election/:address', (req, res) => {
-    if (!req.params.address) {
+tallyApp.get('/election/:electionId', (req, res) => {
+    if (!req.params.electionId) {
         sendError(res, 400, "address is required");
         return;
     }
-    const address = req.params.address;
+    const electionId = req.params.electionId;
     let deployedElection;
-    return getDeployedElection(address).then((el) => {
+    return getDeployedElection(electionId).then((el) => {
         deployedElection = el;
         return submitEthTransaction(COLLECTION_TALLY_TX, {
             address: el.address,
