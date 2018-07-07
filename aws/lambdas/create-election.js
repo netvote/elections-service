@@ -116,6 +116,7 @@ exports.handler = async (event, context, callback) => {
         const tx = await createElection(electionId, event.election, event.version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
+            electionId: electionId,
             status: "complete",
             address: electionId
         }, true);

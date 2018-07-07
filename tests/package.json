@@ -1,0 +1,22 @@
+{
+  "name": "elections-system-tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "./node_modules/mocha/bin/mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/netvote/elections-service/tests"
+  },
+  "author": "steven@netvote.io",
+  "license": "GPL-3.0",
+  "devDependencies": {
+    "mocha": "^5.2.0"
+  },
+  "dependencies": {
+    "firebase": "^5.2.0",
+    "https": "^1.0.0"
+  }
+}

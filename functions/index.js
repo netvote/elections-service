@@ -1287,6 +1287,7 @@ tallyApp.get('/election/:electionId', (req, res) => {
         deployedElection = el;
         return submitEthTransaction(COLLECTION_TALLY_TX, {
             address: el.address,
+            electionId: electionId,
             status: "pending"
         });
     }).then((jobRef) => {
