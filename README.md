@@ -184,7 +184,7 @@ Body:
 ```
 - **electionId**: (required) electionId of election
 
-### POST /admin/election/tally
+### GET /admin/election/tally
 
 This will do the following: 
 1. Start a tally of the election
