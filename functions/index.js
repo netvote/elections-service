@@ -254,7 +254,7 @@ const encodeVote = (voteObj) => {
         return new Promise((resolve, reject) => {
             let errMsg = VoteProto.verify(voteObj);
             if (errMsg) {
-                console.error("error encoding proto: " + errMsg);
+                console.error("error encoding proto: " + errMsg);Body
                 reject(errMsg);
                 return;
             }
@@ -268,7 +268,7 @@ const encodeVote = (voteObj) => {
 /*
 const validateVote = (vote, poolAddress) => {
     return new Promise((resolve, reject) => {
-        return BasePool.at(poolAddress).getBallotCount().then((bc) => {
+        return BasePool.at(poolAddress).getBallotCount().then((bcBody
             const ballotCount = parseInt(bc);
             if (vote.ballotVotes.length !== ballotCount) {
                 reject("vote must have " + ballotCount + " ballotVotes, actual=" + vote.ballotVotes.length)
@@ -1278,13 +1278,17 @@ tallyApp.use(authHeaderDecorator);
 
 tallyApp.get('/election/:electionId', (req, res) => {
     if (!req.params.electionId) {
-        sendError(res, 400, "address is required");
+        sendError(res, 400, "electionId is required");
         return;
     }
     const electionId = req.params.electionId;
     let deployedElection;
     return getDeployedElection(electionId).then((el) => {
         deployedElection = el;
+        if(!el.resultsAvailable){
+            sendError(res, 409, "Election is not revealed. Please try again later.");
+            return;
+        }
         return submitEthTransaction(COLLECTION_TALLY_TX, {
             address: el.address,
             electionId: electionId,

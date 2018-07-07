@@ -184,7 +184,7 @@ Body:
 ```
 - **electionId**: (required) electionId of election
 
-### GET /admin/election/tally
+### GET /tally/election/{electionId}
 
 This will do the following: 
 1. Start a tally of the election
@@ -193,12 +193,7 @@ This will do the following:
 NOTE: 
 - If the election is not ready to be tallied, you'll get a 409 back
 
-Body:
-```
-{
-	"electionId": "electionId"
-}
-```
+Path Parameters:
 - **electionId**: (required) electionId of election
 
 Contributing
