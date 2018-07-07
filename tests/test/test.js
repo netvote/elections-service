@@ -81,7 +81,7 @@ const expectResult = (res, candidate, votes) => {
           tokens = [token1, token2, token3]
         })
   
-        it('should cast two votes', async()=>{
+        it('should cast three votes', async()=>{
           let tx1 = await nv.CastVote({
             electionId: electionId,
             vote: VOTE_0_0_0
