@@ -38,6 +38,7 @@ const expectResult = (res, candidate, votes) => {
         let electionId;
         let keys;
         let tokens;
+        let txIds = [];
   
         it('should create election', async () => {
           let res = await nv.CreateElection(options);
@@ -95,6 +96,11 @@ const expectResult = (res, candidate, votes) => {
             vote: VOTE_1_1_1
           }, tokens[2])
   
+          // save off for retrieval later
+          txIds.push(tx1.tx)
+          txIds.push(tx2.tx)
+          txIds.push(tx3.tx)
+
           assert.equal(tx1.status, "complete")
           assert.equal(tx2.status, "complete")
           assert.equal(tx3.status, "complete");
@@ -121,6 +127,38 @@ const expectResult = (res, candidate, votes) => {
           expectResult(ballotResults[1], "No", 2)
           expectResult(ballotResults[2], "Doug Hall", 1)
           expectResult(ballotResults[2], "Emily Washington", 2)
+        })
+
+        it('should lookup votes correctly', async()=>{
+          let res1 = await nv.LookupVote(electionId, txIds[0])
+          let ballotResults = res1.ballots[deployedElection.address].results['ALL'];
+          expectResult(ballotResults[0], "John Smith", 1)
+          expectResult(ballotResults[0], "Sally Gutierrez", 0)
+          expectResult(ballotResults[0], "Tyrone Williams", 0)
+          expectResult(ballotResults[1], "Yes", 1)
+          expectResult(ballotResults[1], "No", 0)
+          expectResult(ballotResults[2], "Doug Hall", 1)
+          expectResult(ballotResults[2], "Emily Washington", 0)
+
+          let res2 = await nv.LookupVote(electionId, txIds[1])
+          ballotResults = res2.ballots[deployedElection.address].results['ALL'];
+          expectResult(ballotResults[0], "John Smith", 0)
+          expectResult(ballotResults[0], "Sally Gutierrez", 1)
+          expectResult(ballotResults[0], "Tyrone Williams", 0)
+          expectResult(ballotResults[1], "Yes", 0)
+          expectResult(ballotResults[1], "No", 1)
+          expectResult(ballotResults[2], "Doug Hall", 0)
+          expectResult(ballotResults[2], "Emily Washington", 1)
+
+          let res3 = await nv.LookupVote(electionId, txIds[2])
+          ballotResults = res3.ballots[deployedElection.address].results['ALL'];
+          expectResult(ballotResults[0], "John Smith", 0)
+          expectResult(ballotResults[0], "Sally Gutierrez", 1)
+          expectResult(ballotResults[0], "Tyrone Williams", 0)
+          expectResult(ballotResults[1], "Yes", 0)
+          expectResult(ballotResults[1], "No", 1)
+          expectResult(ballotResults[2], "Doug Hall", 0)
+          expectResult(ballotResults[2], "Emily Washington", 1)
         })
   
       });

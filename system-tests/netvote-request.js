@@ -52,6 +52,10 @@ const netvoteRequest = (method, path, postObj, headers) => {
   })
 }
 
+const netvoteGet = (path, headers) => {
+  return netvoteRequest('GET', path, null, headers);
+};
+
 const netvotePost = (path, postObj, headers) => {
   return netvoteRequest('POST', path, postObj, headers);
 };
@@ -135,6 +139,10 @@ module.exports = {
   },
   TallyElection: async(electionId) => {
     let res = await netvoteTxGet(`/tally/election/${electionId}`)
+    return JSON.parse(res.results);
+  },
+  LookupVote: async(electionId, txId) => {
+    let res = await netvoteGet(`/vote/lookup/${electionId}/${txId}`)
     return JSON.parse(res.results);
   }
 }
