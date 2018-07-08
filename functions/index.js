@@ -265,49 +265,48 @@ const encodeVote = (voteObj) => {
     })
 };
 
-/*
-const validateVote = (vote, poolAddress) => {
-    return new Promise((resolve, reject) => {
-        return BasePool.at(poolAddress).getBallotCount().then((bcBody
-            const ballotCount = parseInt(bc);
-            if (vote.ballotVotes.length !== ballotCount) {
-                reject("vote must have " + ballotCount + " ballotVotes, actual=" + vote.ballotVotes.length)
-            }
-            initIpfs();
-            for (let i = 0; i < ballotCount; i++) {
-                let ballotVote = vote.ballotVotes[i];
-                // validate this ballot vote
-                BasePool.at(poolAddress).getBallot(i).then((ballotAddress) => {
-                    return BaseBallot.at(ballotAddress).metadataLocation()
-                }).then((location) => {
-                    return ipfsLookup(location)
-                }).then((metadata) => {
 
-                    if (ballotVote.choices.length !== metadata.decisions.length) {
-                        reject("ballotVotes[" + i + "] should have " + metadata.decisions.length + " choices but had " + ballotVote.choices.length);
-                    }
+// const validateVote = (vote, poolAddress) => {
+//     return new Promise((resolve, reject) => {
+//         return BasePool.at(poolAddress).getBallotCount().then((bc)=>{
+//             const ballotCount = parseInt(bc);
+//             if (vote.ballotVotes.length !== ballotCount) {
+//                 reject("vote must have " + ballotCount + " ballotVotes, actual=" + vote.ballotVotes.length)
+//             }
+//             initIpfs();
+//             for (let i = 0; i < ballotCount; i++) {
+//                 let ballotVote = vote.ballotVotes[i];
+//                 // validate this ballot vote
+//                 BasePool.at(poolAddress).getBallot(i).then((ballotAddress) => {
+//                     return BaseBallot.at(ballotAddress).metadataLocation()
+//                 }).then((location) => {
+//                     return ipfsLookup(location)
+//                 }).then((metadata) => {
 
-                    ballotVote.choices.forEach((c, idx) => {
-                        if (!c.writeIn) {
-                            if (c.selection < 0) {
-                                reject("ballotVotes[" + i + "] choice[" + idx + "] cannot have a selection less than 0")
-                            }
-                            if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
-                                reject("ballotVotes[" + i + "] choice[" + idx + "] must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1) + ", was=" + c.selection)
-                            }
-                        } else {
-                            if (c.writeIn.length > 200) {
-                                reject("writeIn is limited to 200 characters")
-                            }
-                        }
-                    });
-                    resolve(true);
-                });
-            }
-        })
-    });
-};
-*/
+//                     if (ballotVote.choices.length !== metadata.decisions.length) {
+//                         reject("ballotVotes[" + i + "] should have " + metadata.decisions.length + " choices but had " + ballotVote.choices.length);
+//                     }
+
+//                     ballotVote.choices.forEach((c, idx) => {
+//                         if (!c.writeIn) {
+//                             if (c.selection < 0) {
+//                                 reject("ballotVotes[" + i + "] choice[" + idx + "] cannot have a selection less than 0")
+//                             }
+//                             if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
+//                                 reject("ballotVotes[" + i + "] choice[" + idx + "] must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1) + ", was=" + c.selection)
+//                             }
+//                         } else {
+//                             if (c.writeIn.length > 200) {
+//                                 reject("writeIn is limited to 200 characters")
+//                             }
+//                         }
+//                     });
+//                     resolve(true);
+//                 });
+//             }
+//         })
+//     });
+// };
 
 const electionOwnerCheck = (req, res, next) => {
     let electionId = req.body.electionId || req.body.address;
