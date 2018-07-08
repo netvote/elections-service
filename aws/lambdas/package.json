@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/netvote/elections-service#readme",
   "dependencies": {
-    "@netvote/elections-tally": "^0.2.3",
+    "@netvote/elections-tally": "^0.2.5",
     "crypto": "^1.0.1",
     "googleapis": "^28.1.0",
     "ipfs-mini": "^1.1.2",
