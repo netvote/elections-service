@@ -11764,14 +11764,14 @@ var BallotModalComponent = (function () {
 /***/ "./src/app/ballot-results-chart/ballot-results-chart.component.html":
 /***/ (function(module, exports) {
 
-module.exports = "<canvas baseChart #resultChart\n        [data]=\"pieChartData\"\n        [labels]=\"pieChartLabels\"\n        [options]=\"pieChartOptions\"\n        [colors]=\"pieChartColors\"\n        [chartType]=\"pieChartType\"\n        (chartHover)=\"chartHovered($event)\"\n        (chartClick)=\"chartClicked($event)\"></canvas>"
+module.exports = "<canvas baseChart\n        [data]=\"pieChartData\"\n        [labels]=\"pieChartLabels\"\n        [options]=\"pieChartOptions\"\n        [colors]=\"pieChartColors\"\n        [chartType]=\"pieChartType\"\n        (chartHover)=\"chartHovered($event)\"\n        (chartClick)=\"chartClicked($event)\"></canvas>\n"
 
 /***/ }),
 
 /***/ "./src/app/ballot-results-chart/ballot-results-chart.component.scss":
 /***/ (function(module, exports) {
 
-module.exports = ""
+module.exports = "ballot-results-chart {\n  display: -webkit-box;\n  display: -ms-flexbox;\n  display: flex; }\n"
 
 /***/ }),
 
@@ -11793,127 +11793,58 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 
-// import { Chart } from 'chart.js';
 
 var BallotResultsChartComponent = (function () {
-    // isDataAvailable:boolean = false;
-    function BallotResultsChartComponent(renderer) {
-        this.renderer = renderer;
-        this.pieChartLabels = ['Candidate 0', 'Candidate 2', 'Candidate 3'];
+    function BallotResultsChartComponent() {
         this.pieChartType = 'pie';
         this.pieChartOptions = {
             responsive: true,
             legend: { position: 'bottom' }
         };
-        this.pieChartColors = [{ backgroundColor: [
+        this.pieChartLegend = true;
+        this.pieChartColors = [{
+                backgroundColor: [
                     'rgba(100, 190, 188, 1.00)',
                     "rgba(17, 55, 74, 1.00)",
                     "rgba(148,159,177,1)"
                 ]
             }];
     }
+    // events
+    BallotResultsChartComponent.prototype.chartClicked = function (e) {
+        console.log(e);
+    };
+    BallotResultsChartComponent.prototype.chartHovered = function (e) {
+        console.log(e);
+    };
     BallotResultsChartComponent.prototype.ngOnInit = function () {
-        var _this = this;
-        var results = [];
-        var opacity = 1.00;
-        this.resultData.ballotItems.forEach(function (item, index) {
-            _this.pieChartData = item.result.counts;
-            console.log("DA CHART DATA", _this.pieChartData);
-            // results.push({
-            //   label: item.itemTitle,
-            //   backgroundColor: `rgba(95, 192, 189, ${opacity})`,
-            //   data: [item.result.counts]
-            // });
-            opacity -= .3;
-        });
-        // Test PIE Chart
-        // public pieChartLabels:string[] = ['Candidate 0', 'Candidate 2', 'Candidate 3'];
-        // // public pieChartData:number[] = [300, 500, 100];
-        // public pieChartType:string = 'pie';
-        // public pieChartOptions:any = {
-        //   responsive: true,
-        //   legend: {position: 'bottom'}
-        // };
-        // public pieChartColors:Array<any> = [{ backgroundColor: [
-        //   'rgba(100, 190, 188, 1.00)', 
-        //   "rgba(17, 55, 74, 1.00)", 
-        //   "rgba(148,159,177,1)"] 
-        // }];
-        // this.chart = new Chart(this.resultPieChart.nativeElement, {
-        //   type: 'horizontalBar',
-        //     data: {
-        //       datasets: results
-        //     },
-        //     options: {
-        //       layout: {
-        //         padding: {
-        //           left: 5,
-        //           right: 20,
-        //           top: 0,
-        //           bottom: 0
-        //         }
-        //       },
-        //       legend: {
-        //         display: true,
-        //         usePointStyle: true,
-        //         position: 'bottom',
-        //         labels: {
-        //           boxWidth: 10,
-        //           fontColor: 'rgb(255, 255, 255)'
-        //         }
-        //       },
-        //       scales: {
-        //         xAxes: [{
-        //           scaleLabel: {
-        //             display: true,
-        //             labelString: "# of votes",
-        //             fontColor: 'rgba(255,255,255, 0.8)'
-        //           },
-        //           gridLines: {
-        //             zeroLineColor: 'rgba(255, 255, 255, 0.1)',
-        //             color: 'rgba(255, 255, 255, 0.1)'
-        //           },
-        //           ticks: {
-        //             fontColor: 'rgba(255,255,255, 0.8)',
-        //             beginAtZero: true
-        //           }
-        //         }],
-        //         yAxes: [{
-        //           maxBarThickness: 20,
-        //           scaleLabel: {
-        //             display: false
-        //           },
-        //           gridLines: {
-        //             display: false
-        //           },
-        //           ticks: {
-        //             fontColor: 'rgba(255,255,255, 0.8)',
-        //             beginAtZero: true
-        //           }
-        //         }]
-        //       }
-        //     }
-        // });
+        this.pieChartData = this.pieCounts;
+        this.pieChartLabels = this.pieLabels;
+        // setTimeout(() => {
+        //   console.log("3 second timeout");
+        //   this.chart.chart.update();
+        // }, 3000);
     };
     __decorate([
         Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["ViewChild"])(__WEBPACK_IMPORTED_MODULE_1_ng2_charts_ng2_charts__["BaseChartDirective"]),
         __metadata("design:type", __WEBPACK_IMPORTED_MODULE_1_ng2_charts_ng2_charts__["BaseChartDirective"])
     ], BallotResultsChartComponent.prototype, "chart", void 0);
     __decorate([
-        Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["ViewChild"])('resultChart', { read: __WEBPACK_IMPORTED_MODULE_0__angular_core__["ElementRef"] }),
+        Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["Input"])('pieCounts'),
         __metadata("design:type", Object)
-    ], BallotResultsChartComponent.prototype, "resultPieChart", void 0);
+    ], BallotResultsChartComponent.prototype, "pieCounts", void 0);
     __decorate([
-        Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["Input"])('resultData'),
+        Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["Input"])('pieLabels'),
         __metadata("design:type", Object)
-    ], BallotResultsChartComponent.prototype, "resultData", void 0);
+    ], BallotResultsChartComponent.prototype, "pieLabels", void 0);
     BallotResultsChartComponent = __decorate([
         Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["Component"])({
             selector: 'ballot-results-chart',
             template: __webpack_require__("./src/app/ballot-results-chart/ballot-results-chart.component.html"),
-            styles: [__webpack_require__("./src/app/ballot-results-chart/ballot-results-chart.component.scss")]
+            styles: [__webpack_require__("./src/app/ballot-results-chart/ballot-results-chart.component.scss")],
+            encapsulation: __WEBPACK_IMPORTED_MODULE_0__angular_core__["ViewEncapsulation"].None
         }),
-        __metadata("design:paramtypes", [__WEBPACK_IMPORTED_MODULE_0__angular_core__["Renderer"]])
+        __metadata("design:paramtypes", [])
     ], BallotResultsChartComponent);
     return BallotResultsChartComponent;
 }());
@@ -11925,7 +11856,7 @@ var BallotResultsChartComponent = (function () {
 /***/ "./src/app/ballot-results/ballot-results.component.html":
 /***/ (function(module, exports) {
 
-module.exports = "\n<div class=\"px-3\">\n\n  <div *ngIf=\"ballot\">\n    <h1 class=\"mt-4\">Ballot Results: <strong>{{ballot.json.ballotTitle}}</strong></h1>\n    <p><a routerLink=\"/ballot-builder/{{ballot.id}}\"><span class=\"oi oi-arrow-left\"></span> Back to ballot</a></p>  \n  </div>\n\n  <div *ngIf=\"ballot\">\n\n    <spinner name=\"resultsSpinner\" [(hidden)]=\"isDataAvailable\">\n      <div class=\"nv-spinner  is-animating\">\n        <div class=\"nv-spinner__text\">Compiling Results...</div>\n        <div class=\"nv-spinner__anim\"></div>\n      </div>\n    </spinner>\n\n    <div *ngIf=\"isDataAvailable\">\n\n      <div *ngFor=\"let bGroup of ballot.json.ballotGroups; let groupIdx = index; last as isLast\" class=\"nv-results__group\" [class.is-last-group]=\"isLast\">\n    \n          <h5>{{bGroup.groupTitle}}</h5>\n          <div class=\"row\">\n    \n            <ng-container *ngFor=\"let bSection of bGroup.ballotSections; let sectionIdx = index\" >\n    \n              <div class=\"col-4 mb-5\">\n    \n                  <p>{{bSection.sectionTitle}}</p>\n        \n                  <canvas baseChart\n                  [datasets]=\"pieChartData\"\n                  [labels]=\"pieChartLabels\"\n                  [options]=\"pieChartOptions\"\n                  [colors]=\"pieChartColors\"\n                  [chartType]=\"pieChartType\"\n                  (chartHover)=\"chartHovered($event)\"\n                  (chartClick)=\"chartClicked($event)\"></canvas>\n        \n                  <!-- <ballot-results-chart *ngIf=\"isDataAvailable\" [resultData]=\"bSection\"></ballot-results-chart> -->\n    \n                </div>\n                <div *ngIf=\"(i + 1) % 3 == 0\" class=\"w-100\"></div>\n    \n            </ng-container>\n    \n          </div>\n          \n        </div>\n\n    </div>\n\n  </div>\n\n</div>"
+module.exports = "\n<div class=\"px-3\">\n\n  <div *ngIf=\"ballot\">\n    <h1 class=\"mt-4\">Ballot Results: <strong>{{ballot.json.ballotTitle}}</strong></h1>\n    <p><a routerLink=\"/ballot-builder/{{ballot.id}}\"><span class=\"oi oi-arrow-left\"></span> Back to ballot</a></p>  \n  </div>\n\n  <div *ngIf=\"ballot\">\n\n    <!-- <spinner name=\"resultsSpinner\" [(show)]=\"!isDataAvailable\">\n      <div class=\"nv-spinner  is-animating\">\n        <div class=\"nv-spinner__text\">Compiling Results...</div>\n        <div class=\"nv-spinner__anim\"></div>\n      </div>\n    </spinner> -->\n\n    <div *ngIf=\"!isDataAvailable\" class=\"alert alert-info text-center mt-5\">Compiling results and generating charts...</div>\n\n    <div *ngIf=\"isDataAvailable\">\n\n      <div *ngFor=\"let bGroup of ballot.json.ballotGroups; let groupIdx = index; last as isLast\" class=\"mt-5\" [class.is-last-group]=\"isLast\">\n    \n          <h5>{{bGroup.groupTitle}}</h5>\n          <div class=\"row\">\n    \n            <ng-container *ngFor=\"let bSection of bGroup.ballotSections; let sectionIdx = index\" >\n    \n              <div class=\"col-4 mb-5\">\n    \n                  <p>{{bSection.sectionTitle}}</p>\n\n                  <ballot-results-chart [pieCounts]=\"bSection.pieCounts\" [pieLabels]=\"bSection.pieLabels\"></ballot-results-chart>\n    \n                </div>\n                <div *ngIf=\"(i + 1) % 3 == 0\" class=\"w-100\"></div>\n    \n            </ng-container>\n    \n          </div>\n          \n        </div>\n\n    </div>\n\n  </div>\n\n</div>"
 
 /***/ }),
 
@@ -11962,22 +11893,7 @@ var BallotResultsComponent = (function () {
         this.route = route;
         this.router = router;
         this.ballot = null;
-        this.pieChartType = 'pie';
         this.isDataAvailable = false;
-        // Test PIE Chart
-        //public pieChartType:string = 'pie';
-        this.pieChartOptions = {
-            responsive: true,
-            legend: { position: 'bottom' }
-        };
-        this.pieChartLegend = true;
-        this.pieChartColors = [{
-                backgroundColor: [
-                    'rgba(100, 190, 188, 1.00)',
-                    "rgba(17, 55, 74, 1.00)",
-                    "rgba(148,159,177,1)"
-                ]
-            }];
     }
     BallotResultsComponent.prototype.ngOnInit = function () {
         var _this = this;
@@ -11992,11 +11908,11 @@ var BallotResultsComponent = (function () {
                         var resultData = JSON.parse(tally.results);
                         var results = resultData.ballots[Object.keys(resultData.ballots)[0]].results.ALL;
                         if (results.length > 0) {
-                            console.log("THE RESULTS", results);
+                            //console.log("THE RESULTS", results);
                             var sectionIdx_1 = 0;
                             json.ballotGroups.forEach(function (group, index) {
                                 group.ballotSections.forEach(function (section, index) {
-                                    var pieResults = [];
+                                    var pieCounts = [];
                                     var pieLabels = [];
                                     section.ballotItems.forEach(function (item, index) {
                                         item.result = {};
@@ -12004,18 +11920,12 @@ var BallotResultsComponent = (function () {
                                         item.result.group = group;
                                         item.result.section = section;
                                         pieLabels.push(item.itemTitle);
-                                        pieResults.push({
-                                            label: item.itemTitle,
-                                            data: [item.result.counts]
-                                        });
-                                        // console.log('PIE CHART DATA ', this.pieChartData);
+                                        pieCounts.push(item.result.counts);
                                     });
-                                    _this.pieChartData = pieResults;
-                                    _this.pieChartType = 'pie';
-                                    _this.pieChartLabels = pieLabels;
+                                    // Create counts and labels on section object that is passed to chart component
+                                    section.pieCounts = pieCounts;
+                                    section.pieLabels = pieLabels;
                                     sectionIdx_1++;
-                                    console.log('PIE CHART DATA ', _this.pieChartData);
-                                    console.log('PIE CHART LABELS ', _this.pieChartLabels);
                                 });
                             });
                         }
@@ -12026,13 +11936,6 @@ var BallotResultsComponent = (function () {
                 });
             }
         });
-    };
-    // events
-    BallotResultsComponent.prototype.chartClicked = function (e) {
-        console.log(e);
-    };
-    BallotResultsComponent.prototype.chartHovered = function (e) {
-        console.log(e);
     };
     BallotResultsComponent = __decorate([
         Object(__WEBPACK_IMPORTED_MODULE_0__angular_core__["Component"])({

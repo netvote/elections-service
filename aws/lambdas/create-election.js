@@ -65,6 +65,27 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
     })
 }
 
+const transferVoteAllowance = async (address) => {
+    let nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    await VoteContract.transfer(address, web3.utils.toWei("1000", 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
+    console.log("transfered 1000 vote token to election: "+address)
+}
+
+const postPrivateKey = async (electionId, address, isPublic) => {
+    let encryptionKey = await generateHashKey("encryptionKeys", electionId)
+    if (isPublic) {
+        let nonce = await nonceCounter.getNonce(process.env.NETWORK);
+        await BasicElection.at(address).setPrivateKey(encryptionKey, {nonce: nonce, from: nv.gatewayAddress()})
+        console.log("released private key: "+address)
+    }
+}
+
+const addElectionToAllowance = async(address) => {
+    let nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    await VoteContract.addElection(address, {nonce: nonce, from: nv.gatewayAddress()})
+    console.log("added address to vote contract for event subscription")
+}
+
 const createElection = async(electionId, election, version) => {
     let gatewayAddress = nv.gatewayAddress();
     version = (version) ? version : 15;
@@ -87,20 +108,12 @@ const createElection = async(electionId, election, version) => {
 
     await generateHashKey("hashSecrets", electionId)
 
-    nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    await VoteContract.transfer(el.address, web3.utils.toWei("1000", 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
-    console.log("transfered 1000 vote token to election: "+el.address)
-
-    let encryptionKey = await generateHashKey("encryptionKeys", electionId)
-    if (election.isPublic) {
-        nonce = await nonceCounter.getNonce(process.env.NETWORK);
-        await BasicElection.at(el.address).setPrivateKey(encryptionKey, {nonce: nonce, from: nv.gatewayAddress()})
-        console.log("released private key: "+el.address)
-    }
-
-    nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    await VoteContract.addElection(el.address, {nonce: nonce, from: nv.gatewayAddress()})
-    console.log("added address to vote contract for event subscription")
+    let setupTasks = []
+    setupTasks.push(transferVoteAllowance(el.address))
+    setupTasks.push(postPrivateKey(electionId, el.address, election.isPublic))
+    setupTasks.push(addElectionToAllowance(el.address));
+    
+    await Promise.all(setupTasks);
 
     await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate);
     return el;
