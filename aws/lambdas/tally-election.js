@@ -8,7 +8,11 @@ const updateEveryNVotes = process.env.UPDATE_EVERY_N_VOTES ? parseInt(process.en
 exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
-
+    context.callbackWaitsForEmptyEventLoop = false;
+    if(event.ping) {
+        callback(null, "ok")
+        return;
+    }
     try {
         let version = event.version ? event.version : 15;
         let address = event.address;

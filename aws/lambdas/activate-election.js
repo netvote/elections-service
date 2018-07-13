@@ -12,7 +12,10 @@ exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     context.callbackWaitsForEmptyEventLoop = false;
-
+    if(event.ping) {
+        callback(null, "ok")
+        return;
+    }
     try {
         let version = event.version ? event.version : 15;
         const ElectionPhaseable = await nv.ElectionPhaseable(version);

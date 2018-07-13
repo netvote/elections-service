@@ -30,7 +30,10 @@ exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     context.callbackWaitsForEmptyEventLoop = false;
-
+    if(event.ping) {
+        callback(null, "ok")
+        return;
+    }
     try {
         let version = event.vote.version ? event.vote.version : 15;
         let BasePool = await nv.BasePool(version);

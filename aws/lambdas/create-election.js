@@ -123,7 +123,10 @@ exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     context.callbackWaitsForEmptyEventLoop = false;
-
+    if(event.ping) {
+        callback(null, "ok")
+        return;
+    }
     try {
         let electionId = uuid();
         const tx = await createElection(electionId, event.election, event.version);
