@@ -1,6 +1,7 @@
 const firebaseUpdater = require("./firebase-updater.js");
 const nonceCounter = require("./nonce-counter.js");
-
+// instantiate the iopipe library
+var iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const nv = require("./netvote-eth.js");
 
 
@@ -26,7 +27,7 @@ const updateVote = async(voteObj, BasePool) => {
     return tx;
 };
 
-exports.handler = async (event, context, callback) => {
+exports.handler = iopipe(async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     context.callbackWaitsForEmptyEventLoop = false;
@@ -34,7 +35,6 @@ exports.handler = async (event, context, callback) => {
         let version = event.vote.version ? event.vote.version : 15;
         let BasePool = await nv.BasePool(version);
         let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
-        console.log("updated already: "+update);
         const ethTransaction = (update) ? updateVote : castVote;
         const tx = await ethTransaction(event.vote, BasePool);
         await firebaseUpdater.updateStatus(event.callback, {
@@ -49,4 +49,4 @@ exports.handler = async (event, context, callback) => {
         });
         callback(e, "ok")
     }
-};
+});

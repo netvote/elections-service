@@ -150,6 +150,7 @@ const atMostOnce = (collection, id) => {
 };
 
 const sendError = (res, code, txt) => {
+    console.error("sending error: code="+code+", text="+txt);
     res.status(code).send({ "status": "error", "text": txt });
 };
 
@@ -863,7 +864,7 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
             address: el.address,
             electionId: electionId
         })
-    }).then((ref) => {
+    }).then(async (ref) => {
         let payload = {
             electionId: electionId,
             address: deployedElection.address,
@@ -871,13 +872,11 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
             callback: collection + "/" + ref.id
         }
         let lambdaName = (deployedElection.network === "netvote") ? 'private-activate-election'  : 'netvote-activate-election';
-        asyncInvokeLambda(lambdaName, payload, (error, data) => {
-            if (error) {
-                handleTxError(ref, error);
-            } else {
-                console.log("invocation completed, data:" + JSON.stringify(data))
-            }
-        });
+        try{
+            await asyncInvokeLambda(lambdaName, payload);
+        } catch(e){
+            handleTxError(ref, e);
+        }
 
         res.send({ txId: ref.id, collection: collection });
     }).catch((e) => {
@@ -902,37 +901,35 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             address: deployedElection.address,
             electionId: electionId
         })
-    }).then((ref) => {
+    }).then(async (ref) => {
         let payload = {
             electionId: electionId,
             address: deployedElection.address,
             version: deployedElection.version,
             callback: collection + "/" + ref.id
         }
+        //close election
         let lambdaName = (deployedElection.network === "netvote") ? 'private-close-election'  : 'netvote-close-election';
-        asyncInvokeLambda(lambdaName, payload, (error, data) => {
-            if (error) {
-                handleTxError(ref, error);
-            } else {
-                console.log("close invoked successfully, data:" + JSON.stringify(data))
-                let revealLambdaName = (deployedElection.network === "netvote") ? 'private-reveal-key'  : 'netvote-reveal-key';
-                getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS).then((key) =>{
-                    payload = {
-                        key: key,
-                        electionId: electionId,
-                        address: deployedElection.address
-                    }
-                    asyncInvokeLambda(revealLambdaName, payload, (error, data) => {
-                        if (error) {
-                            handleTxError(ref, error);
-                        } else {
-                            console.log("reveal invoked successfully, data:" + JSON.stringify(data))
-                            removeHashKey(electionId, COLLECTION_HASH_SECRETS)
-                        }
-                    });
-                })
-            }
-        });
+        try{
+            await asyncInvokeLambda(lambdaName, payload);
+        }catch(e){
+            handleTxError(ref, error);
+        }
+
+        // reveal key
+        let revealLambdaName = (deployedElection.network === "netvote") ? 'private-reveal-key'  : 'netvote-reveal-key';
+        let key = await getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS);
+        payload = {
+            key: key,
+            electionId: electionId,
+            address: deployedElection.address
+        }
+        try{
+            await asyncInvokeLambda(revealLambdaName, payload);
+            await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
+        }catch(e){
+            handleTxError(ref, e);
+        }
     
         res.send({ txId: ref.id, collection: collection });
     }).catch((e) => {
@@ -972,7 +969,7 @@ adminApp.post('/election', (req, res) => {
             version: v
         })
     }).then((ref) => {
-        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id).then(() => {
+        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id).then(async () => {
             let payload = {
                 version: version,
                 election: {
@@ -987,14 +984,12 @@ adminApp.post('/election', (req, res) => {
             }
             console.log("sending payload: "+JSON.stringify(payload))
             let lambdaName = (network === "netvote") ? 'private-create-election'  : 'netvote-create-election';
-            asyncInvokeLambda(lambdaName, payload, (error, lambData) => {
-                if (error) {
-                    handleTxError(ref, error);
-                } else {
-                    console.log("invocation completed, data:" + JSON.stringify(lambData))
-                    res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
-                }
-            })
+            try{
+                await asyncInvokeLambda(lambdaName, payload);
+            }catch(e){
+                handleTxError(ref, e);
+            }
+            res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
         }).catch((e) => {
             return handleTxError(ref, e);
         });
@@ -1150,16 +1145,30 @@ let invokeLambda = (name, payload, callback) => {
     lambda.invoke(lambdaParams, callback);
 }
 
-let asyncInvokeLambda = (name, payload, callback) => {
-    const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
-    const lambdaParams = {
-        FunctionName: name,
-        InvocationType: 'Event',
-        LogType: 'None',
-        Payload: JSON.stringify(payload)
-    };
-    callback = (callback) ? callback : lambdaCallback;
-    lambda.invoke(lambdaParams, callback);
+let asyncInvokeLambda = (name, payload) => {
+    return new Promise((resolve, reject) => {
+        try{
+            const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
+            const lambdaParams = {
+                FunctionName: name,
+                InvocationType: 'Event',
+                LogType: 'None',
+                Payload: JSON.stringify(payload)
+            };
+            console.log("START LAMBDA: "+name+", payload="+JSON.stringify(payload))
+            lambda.invoke(lambdaParams, function(err, data){
+                if(err){
+                    reject(err)
+                } else{
+                    console.log("COMPLETE LAMBDA: "+name+", payload="+JSON.stringify(payload))
+                    resolve(data);
+                }
+            });
+        }catch(e){
+            console.error("error invoking lambda: "+name+", payload="+JSON.stringify(payload), error);
+            reject(e);
+        }
+    })
 }
 
 // voterApp.post('/token/auth', tokenOwnerCheck, (req, res) => {
@@ -1174,79 +1183,82 @@ voterApp.post('/scan', voterTokenCheck, (req, res) => {
     });
 });
 
-voterApp.post('/cast', voterTokenCheck, (req, res) => {
+
+const hashVoteId = async (electionId, voter) => {
+    let secret = await getHashKey(electionId, COLLECTION_HASH_SECRETS);
+    const voteIdHmac = toHmac(electionId + ":" + voter, secret);
+    return web3.sha3(voteIdHmac);
+}
+
+const encryptVote = async(electionId, voteBuff, weight) => {
+    let voteObj = await decodeVote(voteBuff);
+    voteObj.weight = weight;
+    voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
+    let vote = await encodeVote(voteObj);
+    return encrypt(vote, electionId);
+}
+
+const hashTokenId = async (electionId, tokenKey) => {
+    let secret = await getHashKey(electionId, COLLECTION_HASH_SECRETS);
+    return web3.sha3(toHmac(tokenKey, secret));
+}
+
+voterApp.post('/cast', voterTokenCheck, async (req, res) => {
     initCrypto();
-    let encodedVote = req.body.vote;
-    let voteObj;
+    initUuid();
+    let reqId = uuid();
     let voteBuff;
-    let encryptedVote;
-    let tokenId;
     let electionId = req.pool;
+    let passphrase = req.body.passphrase || "none";
     try {
-        voteBuff = Buffer.from(encodedVote, 'base64');
+        voteBuff = Buffer.from(req.body.vote, 'base64');
     } catch (e) {
         sendError(res, 400, 'must be valid base64 encoding');
         return;
     }
-    let network;
     if (!voteBuff) {
         sendError(res, 400, "vote is required");
     } else {
-        return decodeVote(voteBuff).then((v) => {
-            voteObj = v;
-            voteObj.weight = req.weight;
-            voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
-            return encodeVote(voteObj);
-        }).then((vote) => {
-            let voteId = "";
-            const passphrase = req.body.passphrase ? req.body.passphrase : "none";
-            getHashKey(electionId, COLLECTION_HASH_SECRETS).then((secret) => {
-                const voteIdHmac = toHmac(electionId + ":" + req.voter, secret);
-                voteId = web3.sha3(voteIdHmac);
-                tokenId = web3.sha3(toHmac(req.tokenKey, secret));
-                return encrypt(vote, electionId);
-            }).then((encryptedPayload) => {
-                encryptedVote = encryptedPayload;
-                return getDeployedElection(electionId)
-            }).then((el) => { 
-                network = el.network;
-                voteObj = {
-                    address: el.address,
-                    version: el.version,
-                    network: el.network,
-                    voteId: voteId,
-                    encryptedVote: encryptedVote,
-                    passphrase: passphrase,
-                    tokenId: tokenId
-                };
 
-                return submitEthTransaction(COLLECTION_VOTE_TX, {
-                    voteId: voteId,
-                    status: "pending"
-                });
-            }).then((jobRef) => {
-                markJwtStatus(req.tokenKey, "voted").then(() => {
-                    let lambdaName = (network == "netvote") ? "private-cast-vote" : "netvote-cast-vote";
-                    asyncInvokeLambda(lambdaName, {
-                        callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
-                        vote: voteObj
-                    }, (error, data) => {
-                        if (error) {
-                            handleTxError(jobRef, error);
-                        } else {
-                            console.log("invocation completed, data:" + JSON.stringify(data))
-                        }
-                    });
-                    res.send({ txId: jobRef.id, collection: COLLECTION_VOTE_TX });
-                })
-            }).catch((e) => {
-                console.error(e);
-                sendError(res, 500, e.message)
+        try{
+            let voteId = await hashVoteId(electionId, req.voter)
+            let tokenId = await hashTokenId(electionId, req.tokenKey)
+            let encryptedVote = await encryptVote(electionId, voteBuff, req.weight)
+            let el = await getDeployedElection(electionId);
+
+            let voteObj = {
+                address: el.address,
+                version: el.version,
+                network: el.network,
+                voteId: voteId,
+                encryptedVote: encryptedVote,
+                passphrase: passphrase,
+                tokenId: tokenId
+            };
+
+            let jobRef = await submitEthTransaction(COLLECTION_VOTE_TX, {
+                voteId: voteId,
+                status: "pending",
+                reqId: reqId
             });
-        }).catch((errorText) => {
-            console.error(errorText);
-            sendError(res, 400, errorText);
-        });
+
+            await markJwtStatus(req.tokenKey, "voted")
+            let lambdaName = (el.network == "netvote") ? "private-cast-vote" : "netvote-cast-vote";
+            console.log(reqId+": START ASYNC LAMBDA: "+lambdaName+", payload="+JSON.stringify(voteObj)+", ref="+jobRef.id);
+
+            try{
+                await asyncInvokeLambda(lambdaName, {
+                    callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
+                    vote: voteObj
+                });
+            }catch(e){
+               handleTxError(jobRef, e); 
+            }
+            res.send({ txId: jobRef.id, collection: COLLECTION_VOTE_TX });
+
+        }catch(e){
+            sendError(res, 500, "error occured");
+        }
     }
 });
 
@@ -1281,7 +1293,7 @@ const tallyApp = express();
 tallyApp.use(cors());
 tallyApp.use(authHeaderDecorator);
 
-tallyApp.get('/election/:electionId', (req, res) => {
+tallyApp.get('/election/:electionId', async (req, res) => {
     if (!req.params.electionId) {
         sendError(res, 400, "electionId is required");
         return;
@@ -1299,20 +1311,17 @@ tallyApp.get('/election/:electionId', (req, res) => {
             electionId: electionId,
             status: "pending"
         });
-    }).then((jobRef) => {
+    }).then(async (jobRef) => {
         const lambdaName = (deployedElection.network == "netvote") ? "private-tally-election" : "netvote-tally-election";
-
-        asyncInvokeLambda(lambdaName, {
-            callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
-            address: deployedElection.address,
-            version: deployedElection.version
-        }, (error, data) => {
-            if (error) {
-                handleTxError(jobRef, error);
-            } else {
-                console.log("invocation completed, data:" + JSON.stringify(data))
-            }
-        });
+        try{
+            await asyncInvokeLambda(lambdaName, {
+                callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
+                address: deployedElection.address,
+                version: deployedElection.version
+            })
+        }catch(e){
+            handleTxError(jobRef, e)
+        }
         res.send({ txId: jobRef.id, collection: COLLECTION_TALLY_TX });
     })   
 });
