@@ -43,7 +43,7 @@
 
 							<div class="wizard-header">
 								<h3 class="wizard-title">
-									Netvote Demo Election
+								  Demo Election
 								</h3>
 								<h5>Cast a vote on the Netvote platform.</h5>
 							</div>
@@ -100,6 +100,7 @@
                                     <h4 id="uportLoginTxt" class="info-text hidden">Click the button to login with uPort</h4>
                                     <h4 id="civicLoginTxt" class="info-text hidden">Click the button to login with Civic</h4>
                                     <h4 id="generateLoginTxt" class="info-text hidden">Click the button to generate an ID</h4>
+                                    <h4 id="lifeidLoginTxt" class="info-text hidden">Click the button to login with lifeID</h4>
 									<div class="row">
 										<div class="col-sm-10 col-sm-offset-1">
 											<div id="civicLogin" class="col-sm-4">
@@ -118,6 +119,15 @@
 												<div class="choice" title="Generate an ID for the demo.">
 													<input type='button' class='btn btn-fill btn-danger btn-wd btn-block' name='generate' id="generate" value='Generate' />
 													<h6>Generate Demo ID</h6>
+												</div>
+                                            </div>
+                                            <div id="lifeidLogin" class="col-sm-4">
+												<div class="choice" title="Login with LifeID">
+                                                    <button type='button' class='btn btn-fill btn-danger btn-wd btn-block' style="background-color: #000000; color:#ffffff" name='lifeid' id="lifeid">
+                                                            <img src="https://lifeid.io/images/horizontal-logo.svg" width="30%" height="30%"/>
+                                                    </button>
+                                        
+                                                    <h6>Login with lifeID</h6>
 												</div>
 											</div>
 										</div>
@@ -236,9 +246,11 @@
             $("#civicLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
             $("#uportLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
             $("#generateLogin").removeClass("hidden").addClass("col-sm-4").removeClass("col-sm-12");
+            $("#lifeidLogin").removeClass("hidden");
             $("#civicLoginTxt").addClass("hidden");
             $("#uportLoginTxt").addClass("hidden");
             $("#generateLoginTxt").addClass("hidden");
+            $("#lifeidLoginTxt").addClass("hidden");
             $("#allLoginTxt").removeClass("hidden");
         }
 
@@ -257,21 +269,31 @@
                 case "uport":
                     hideLoginButton("#civicLogin");
                     hideLoginButton("#generateLogin");
+                    hideLoginButton("#lifeidLogin");
                     showLoginButton("#uportLogin");
                     $("#allLoginTxt").addClass("hidden");
                     break;
                 case "civic":
                     hideLoginButton("#uportLogin");
                     hideLoginButton("#generateLogin");
+                    hideLoginButton("#lifeidLogin");
                     showLoginButton("#civicLogin");
                     $("#allLoginTxt").addClass("hidden");
                     break;
                 case "generate":
                     hideLoginButton("#civicLogin");
                     hideLoginButton("#uportLogin");
+                    hideLoginButton("#lifeidLogin");
                     showLoginButton("#generateLogin");
                     $("#allLoginTxt").addClass("hidden");
                     break;
+                case "lifeid":
+                    hideLoginButton("#civicLogin");
+                    hideLoginButton("#uportLogin");
+                    hideLoginButton("#generateLogin");
+                    showLoginButton("#lifeidLogin");
+                    $("#allLoginTxt").addClass("hidden");
+                    break;    
                 default:
                     $("#allLoginTxt").removeClass("hidden");
                     showAllLoginButtons();
@@ -362,6 +384,10 @@
         })
 
         $("#generate").click(function(){
+            sendGenerateAuthCode();
+        })
+
+        $("#lifeid").click(function(){
             sendGenerateAuthCode();
         })
 

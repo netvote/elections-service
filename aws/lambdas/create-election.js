@@ -7,6 +7,7 @@ const nv = require("./netvote-eth.js");
 const web3 = nv.web3();
 
 const ETH_NETWORK = nv.network();
+const VOTE_LIMIT = process.env.VOTE_LIMIT || "10000";
 
 const toHmac = (value, key) => {
     const hmac = crypto.createHmac('sha256', key);
@@ -67,8 +68,8 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
 
 const transferVoteAllowance = async (address) => {
     let nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    await VoteContract.transfer(address, web3.utils.toWei("1000", 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
-    console.log("transfered 1000 vote token to election: "+address)
+    await VoteContract.transfer(address, web3.utils.toWei(VOTE_LIMIT, 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
+    console.log(`transfered ${VOTE_LIMIT} vote token to election: ${address}`)
 }
 
 const postPrivateKey = async (electionId, address, isPublic) => {
