@@ -29,6 +29,10 @@ const netvoteRequest = (method, path, postObj, headers) => {
       }
     }
 
+    if(!reqHeaders['Authorization']){
+      reqHeaders['Authorization'] = 'Bearer '+process.env.NETVOTE_TEST_API_KEY;
+    }
+
     const options = {
       hostname: 'netvote2.firebaseapp.com',
       port: 443,

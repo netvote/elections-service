@@ -63,6 +63,9 @@ const voterIdHmacSecret = functions.config().netvote.secret.voteridhash;
 // for hmac-ing stored secrets
 const storageHashSecret = functions.config().netvote.secret.storagehash;
 
+// for test invocations (user = test123)
+const testApiKey = functions.config().netvote.secret.testkey;
+
 // civic
 let civicCfg;
 let civicSip;
@@ -186,11 +189,8 @@ const validateFirebaseIdToken = (req, res, next) => {
             'Authorization: Bearer <Firebase ID Token>',
             'or by passing a "__session" cookie.');
         //TODO: remove, this is just testing
-        req.user = {
-            uid: "test123"
-        };
-        return next();
-        //unauthorized(res);
+        unauthorized(res);
+        return;
     }
 
     let idToken;
@@ -198,6 +198,12 @@ const validateFirebaseIdToken = (req, res, next) => {
         idToken = req.headers.authorization.split('Bearer ')[1];
     } else {
         idToken = req.cookies.__session;
+    }
+    if(idToken === testApiKey){
+        req.user = {
+            uid: "test123"
+        };
+        return next();
     }
     admin.auth().verifyIdToken(idToken).then(decodedIdToken => {
         req.user = decodedIdToken;

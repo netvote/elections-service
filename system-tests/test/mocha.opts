@@ -1,1 +1,1 @@
---timeout 60000 --exit --bail
+--timeout 600000 --exit --bail
