@@ -41,8 +41,12 @@ const netvoteRequest = (method, path, postObj, headers) => {
       headers: reqHeaders
     };
     const req = https.request(options, (res) => {
+      let body = '';
       res.on('data', (d) => {
-        resolve(JSON.parse(d))
+        body += d.toString();
+      });
+      res.on('end', () => {
+        resolve(JSON.parse(body))
       });
     });
   
@@ -123,6 +127,11 @@ module.exports = {
   },
   CastVote: async(obj, token) => {
     return await netvoteTxPost("/vote/cast", obj, {
+      Authorization: `Bearer ${token}`
+    })
+  },
+  CastVoteAsync: async(obj, token) => {
+    return await netvotePost("/vote/cast", obj, {
       Authorization: `Bearer ${token}`
     })
   },

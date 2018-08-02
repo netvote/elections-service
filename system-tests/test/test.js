@@ -187,80 +187,102 @@ describe(`End to End Election`, function() {
     });
 
   })
-
-  
 });
 
+describe.skip(`Throughput Test`, function() {
+  let electionId;
+  let keys = [];
 
-// describe.skip(`Throughput Test`, function() {
-//   let electionId;
-//   let keys;
+  let scenarios = [
+    {
+      name: 'election with 250 votes',
+      isPublic : true,
+      metadataLocation: metadataLocation,
+      allowUpdates: true,
+      autoActivate: true,
+      network: 'netvote',
+      votes: 250,
+      maxTime: 500000
+    }
+  ]
 
-//   let scenarios = [
-//     {
-//       name: 'election with 25 votes',
-//       isPublic : true,
-//       metadataLocation: metadataLocation,
-//       allowUpdates: true,
-//       autoActivate: true,
-//       network: 'netvote',
-//       votes: 25
-//     }
-//   ]
+  scenarios.forEach((options) => {
+    it('should create election', async () => {
+      let res = await nv.CreateElection(options);
+      let deployedElection = await nv.GetDeployedElection(res.electionId);
+      assert.equal(deployedElection.network, options.network)
+      let expectedStatus = options.autoActivate ? 'voting' : 'building'
+      assert.equal(deployedElection.status, options.autoActivate ? 'voting' : 'building', `expected ${expectedStatus} status`)
+      assert.equal(deployedElection.resultsAvailable, options.isPublic)
+      electionId = res.electionId;
+    });
 
-//   scenarios.forEach((options) => {
-//     it('should create election', async () => {
-//       let res = await nv.CreateElection(options);
-//       let deployedElection = await nv.GetDeployedElection(res.electionId);
-//       assert.equal(deployedElection.network, options.network)
-//       let expectedStatus = options.autoActivate ? 'voting' : 'building'
-//       assert.equal(deployedElection.status, options.autoActivate ? 'voting' : 'building', `expected ${expectedStatus} status`)
-//       assert.equal(deployedElection.resultsAvailable, options.isPublic)
-//       electionId = res.electionId;
-//     });
+    it('should generate voter keys', async()=>{
+      let votesLeft = options.votes;
+      let batch = 100;
+      while(votesLeft > 0){
+        let thisBatch = (votesLeft < batch) ? votesLeft : batch;
+        let k = await nv.GenerateVoterKeys({
+          electionId: electionId,
+          count: thisBatch
+        });
+        votesLeft -= thisBatch;
+        keys = keys.concat(k)
+      }
+      assert.equal(keys.length, options.votes)
+    })
 
-//     it('should generate voter keys', async()=>{
-//       keys = await nv.GenerateVoterKeys({
-//         electionId: electionId,
-//         count: options.votes
-//       });
-//       assert.equal(keys.length, options.votes)
-//     })
+    it('should cast '+options.votes+' votes', async()=> {
+      let votePromises = [];
+      for(let i=0; i<options.votes; i++){
+        let key = keys[i];
+        let index = i;
+        votePromises.push(new Promise(async (resolve, reject)=>{
+          let token = await nv.GetVoterToken({
+            electionId: electionId
+          }, key)
+          let start = new Date().getTime();
+          await nv.CastVoteAsync({
+            electionId: electionId,
+            vote: VOTE_0_0_0
+          }, token)
+          let end = new Date().getTime();
+          resolve(true);
+        }))
+      }
+      await Promise.all(votePromises);
+    })
 
-//     it('should cast '+options.votes+' votes', async()=> {
-//       let votePromises = [];
-//       for(let i=0; i<options.votes; i++){
-//         let key = keys[i];
-//         votePromises.push(new Promise(async (resolve, reject)=>{
-//           let token = await nv.GetVoterToken({
-//             electionId: electionId
-//           }, key)
-//           await nv.CastVote({
-//             electionId: electionId,
-//             vote: VOTE_0_0_0
-//           }, token)
-//           resolve(true);
-//         }))
-//       }
-//       await Promise.all(votePromises);
-//     })
+    const snooze = ms => new Promise(resolve => setTimeout(resolve, ms)); 
+    const now = () => new Date().getTime() 
 
-//     it('should tally election correctly', async()=>{
-//       let deployedElection = await nv.GetDeployedElection(electionId);
-//       const result = await nv.TallyElection(electionId);
-//       const ballotTotal = result.ballots[deployedElection.address].totalVotes;
-//       assert.equal(ballotTotal, options.votes, "expected votes = "+options.votes);
-//       const ballotResults = result.ballots[deployedElection.address].results['ALL'];
-//       expectResult(ballotResults[0], "John Smith", options.votes)
-//       expectResult(ballotResults[0], "Sally Gutierrez", 0)
-//       expectResult(ballotResults[0], "Tyrone Williams", 0)
-//       expectResult(ballotResults[1], "Yes", options.votes)
-//       expectResult(ballotResults[1], "No", 0)
-//       expectResult(ballotResults[2], "Doug Hall", options.votes)
-//       expectResult(ballotResults[2], "Emily Washington", 0)
-//     })
+    it('should tally election correctly', async()=>{
+      let deployedElection = await nv.GetDeployedElection(electionId);
+      let ballotTotal = 0;
+      let result;
+      let startTime = new Date().getTime();
+      let elapsed = 0;
+      while(ballotTotal != options.votes && elapsed < options.maxTime){
+        result = await nv.TallyElection(electionId);
+        ballotTotal = result.ballots[deployedElection.address].totalVotes;
+        console.log(`votes: ${ballotTotal}, time: ${elapsed/1000}s`)
+        if(ballotTotal != options.votes){
+          await snooze(5000)
+          elapsed = now() - startTime;
+        }
+      }
+      assert.equal(ballotTotal, options.votes, "expected votes = "+options.votes);
+      const ballotResults = result.ballots[deployedElection.address].results['ALL'];
+      expectResult(ballotResults[0], "John Smith", options.votes)
+      expectResult(ballotResults[0], "Sally Gutierrez", 0)
+      expectResult(ballotResults[0], "Tyrone Williams", 0)
+      expectResult(ballotResults[1], "Yes", options.votes)
+      expectResult(ballotResults[1], "No", 0)
+      expectResult(ballotResults[2], "Doug Hall", options.votes)
+      expectResult(ballotResults[2], "Emily Washington", 0)
+    })
 
 
-//   })
+  })
 
-// })
+})
