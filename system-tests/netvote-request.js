@@ -1,5 +1,7 @@
 const https = require('https');
 const firebase = require('firebase');
+var RateLimiter = require('limiter').RateLimiter;
+var limiter = new RateLimiter(25, 'second');
 
 const config = {
   apiKey: "AIzaSyCYwUBgD-jq6bgbKqvLi8zjtMbRLmStN4I",
@@ -12,51 +14,82 @@ const config = {
 
 const app = firebase.initializeApp(config);
 
-const netvoteRequest = (method, path, postObj, headers) => {
+const netvoteRequest = async (method, path, postObj, headers) => {
+  let maxretries = 3;
+  for(let count =0; count<maxretries; count++){
+    try{
+      let res = await netvoteUnsafeRequest(method, path, postObj, headers);
+      if(res !== undefined){
+        return res;
+      }
+    } catch(e){
+      //squash, already logged
+    }
+    console.log("RETRY (sleep 1s): "+path)
+    await snooze(1000)
+  }
+  throw new Error("failed to complete request: "+method)
+} 
+
+const netvoteUnsafeRequest = (method, path, postObj, headers) => {
   return new Promise((resolve,reject) => {
-    const postData = (postObj) ? JSON.stringify(postObj) : null;
+    limiter.removeTokens(1, function() {
+      const postData = (postObj) ? JSON.stringify(postObj) : null;
 
-    let reqHeaders = (postData) ? {
-      'Content-Type': 'application/json',
-      'Content-Length': postData.length
-    } : {}
-
-    if(headers){
-      for(key in headers){
-        if(headers.hasOwnProperty(key)){
-          reqHeaders[key] = headers[key];
+      let reqHeaders = (postData) ? {
+        'Content-Type': 'application/json',
+        'Content-Length': postData.length
+      } : {}
+  
+      if(headers){
+        for(key in headers){
+          if(headers.hasOwnProperty(key)){
+            reqHeaders[key] = headers[key];
+          }
         }
       }
-    }
-
-    if(!reqHeaders['Authorization']){
-      reqHeaders['Authorization'] = 'Bearer '+process.env.NETVOTE_TEST_API_KEY;
-    }
-
-    const options = {
-      hostname: 'netvote2.firebaseapp.com',
-      port: 443,
-      path: `${path}`,
-      method: method,
-      headers: reqHeaders
-    };
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.on('data', (d) => {
-        body += d.toString();
-      });
-      res.on('end', () => {
-        resolve(JSON.parse(body))
-      });
-    });
   
-    req.on('error', (e) => {
-      reject(e);
-    });
-    if(postData) {
-      req.write(postData);
-    }
-    req.end();
+      if(!reqHeaders['Authorization']){
+        reqHeaders['Authorization'] = 'Bearer '+process.env.NETVOTE_TEST_API_KEY;
+      }
+  
+      const options = {
+        hostname: 'netvote2.firebaseapp.com',
+        port: 443,
+        path: `${path}`,
+        method: method,
+        headers: reqHeaders
+      };
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', (d) => {
+          body += d.toString();
+        });
+        res.on('end', () => {
+          try{
+            resolve(JSON.parse(body))
+          }catch(e){
+            if(body && body.indexOf("500 Server Error") > -1){
+              console.error("500 error")
+            } else{
+              console.error("not json: "+body)
+            }
+            reject(e);
+          }
+        });
+      });
+    
+      req.on('error', (e) => {
+        reject(e);
+      });
+      if(postData) {
+        req.write(postData);
+      }
+      req.end();
+    })
+    
+  }).catch((e)=>{
+    console.error("error occured during request")
   })
 }
 
@@ -105,6 +138,8 @@ const getElection = async (electionId) => {
   }
   return doc.data();
 }
+
+const snooze = ms => new Promise(resolve => setTimeout(resolve, ms)); 
 
 module.exports = {
   GetDeployedElection: async(electionId) => {

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "firebase": "^5.2.0",
-    "https": "^1.0.0"
+    "https": "^1.0.0",
+    "limiter": "^1.1.3"
   }
 }

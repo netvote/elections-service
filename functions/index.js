@@ -10,6 +10,8 @@ admin.initializeApp({
     })
 });
 
+admin.firestore().settings({timestampsInSnapshots: true})
+
 process.env.AWS_ACCESS_KEY_ID = functions.config().netvote.secret.awsaccesskey;
 process.env.AWS_SECRET_ACCESS_KEY = functions.config().netvote.secret.awssecretkey;
 const AWS = require('aws-sdk');
@@ -45,6 +47,7 @@ const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
 const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
 const COLLECTION_JWT_TRANSACTION = "transactionJwt";
 const COLLECTION_DEPLOYED_ELECTIONS = "deployedElections"
+const COLLECTION_API_KEYS = "apiKeys"
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -63,8 +66,6 @@ const voterIdHmacSecret = functions.config().netvote.secret.voteridhash;
 // for hmac-ing stored secrets
 const storageHashSecret = functions.config().netvote.secret.storagehash;
 
-// for test invocations (user = test123)
-const testApiKey = functions.config().netvote.secret.testkey;
 
 // civic
 let civicCfg;
@@ -132,8 +133,13 @@ const initCrypto = () => {
     }
 };
 
-const atMostOnce = (collection, id) => {
+const firestore = () => {
     let db = admin.firestore();
+    return db;
+}
+
+const atMostOnce = (collection, id) => {
+    let db = firestore();
     let txRef = db.collection(collection).doc(id);
     return db.runTransaction((t) => {
         return t.get(txRef).then((doc) => {
@@ -181,15 +187,24 @@ const authHeaderDecorator = (req, res, next) => {
     return next();
 };
 
+const getUserForApiKey = async (key) => {
+    let db = firestore();
+    const apiKeyHmac = toHmac(key, storageHashSecret);
+    let k = await db.collection(COLLECTION_API_KEYS).doc(apiKeyHmac).get();
+    if(k.exists){
+        return k.data().user;
+    }
+    return null;
+}
+
 // from https://github.com/firebase/functions-samples/blob/master/authorized-https-endpoint/functions/index.js
-const validateFirebaseIdToken = (req, res, next) => {
+const validateFirebaseIdToken = async (req, res, next) => {
     if ((!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) &&
         !req.cookies.__session) {
         console.error('No Firebase ID token was passed as a Bearer token in the Authorization header.',
             'Make sure you authorize your request by providing the following HTTP header:',
             'Authorization: Bearer <Firebase ID Token>',
             'or by passing a "__session" cookie.');
-        //TODO: remove, this is just testing
         unauthorized(res);
         return;
     }
@@ -200,12 +215,17 @@ const validateFirebaseIdToken = (req, res, next) => {
     } else {
         idToken = req.cookies.__session;
     }
-    if(idToken === testApiKey){
+
+    //API KEY AUTH
+    let keyUser = await getUserForApiKey(idToken);
+    if(keyUser){
         req.user = {
-            uid: "test123"
-        };
+            uid: keyUser
+        }
         return next();
     }
+
+    //FIREBASE AUTH
     admin.auth().verifyIdToken(idToken).then(decodedIdToken => {
         req.user = decodedIdToken;
         next();
@@ -329,7 +349,7 @@ const electionOwnerCheck = (req, res, next) => {
 };
 
 const removeHashKey = (electionId, collection) => {
-    let db = admin.firestore();
+    let db = firestore();
     const electionHmac = toHmac(electionId, storageHashSecret);
     return db.collection(collection).doc(electionHmac).delete();
 };
@@ -357,7 +377,7 @@ const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase, pushToke
 };
 
 const submitEthTransaction = (collection, obj) => {
-    let db = admin.firestore();
+    let db = firestore();
     obj.timestamp = new Date().getTime();
     return db.collection(collection).add(obj);
 };
@@ -383,7 +403,7 @@ const getPins = (electionId, voterId) => {
 
 const isDemoElection = (electionId) => {
     return new Promise(function (resolve, reject) {
-        let db = admin.firestore();
+        let db = firestore();
         return db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(electionId).get().then((doc) => {
             if (doc.exists) {
                 resolve(doc.data().demo);
@@ -397,7 +417,7 @@ const isDemoElection = (electionId) => {
 const getHashKey = (electionId, collection) => {
     initUuid();
     return new Promise(function (resolve, reject) {
-        let db = admin.firestore();
+        let db = firestore();
         const electionHmac = toHmac(electionId, storageHashSecret);
         db.collection(collection).doc(electionHmac).get().then((doc) => {
             if (doc.exists) {
@@ -417,7 +437,7 @@ const getHashKey = (electionId, collection) => {
 const generateKeys = (uid, electionId, count) => {
     initUuid();
     return new Promise(function (resolve, reject) {
-        let db = admin.firestore();
+        let db = firestore();
         let batch = db.batch();
         try {
             let keys = [];
@@ -505,7 +525,7 @@ const voterIdCheck = (req, res, next) => {
     let key = req.token;
     let electionId = req.body.electionId || req.body.address;
     let hmac = calculateRegKey(electionId, key);
-    let db = admin.firestore();
+    let db = firestore();
     db.collection(COLLECTION_VOTER_IDS).doc(hmac).get().then((doc) => {
         if (doc.exists && doc.data().pool === electionId) {
             return next();
@@ -525,7 +545,7 @@ const utilKeyCheck = (req, res, next) => {
 };
 
 const checkPin = (electionId, pin, pinHmac, decoyHmac) => {
-    let db = admin.firestore();
+    let db = firestore();
     return getHashKey(electionId, COLLECTION_VOTER_PIN_HASH_SECRET).then((secret) => {
         const hmac = toHmac(pin, secret);
         if (hmac === pinHmac) {
@@ -578,7 +598,7 @@ const voterTokenCheck = (req, res, next) => {
 };
 
 const markJwtStatus = (key, status) => {
-    let db = admin.firestore();
+    let db = firestore();
     let jwtRef = db.collection(COLLECTION_JWT_TRANSACTION).doc(key);
 
     return db.runTransaction((t) => {
@@ -609,7 +629,7 @@ const createWeightedVoterJwt = (electionId, voterId, weight) => {
         }
         let jwt = nJwt.create(claims, voteTokenSecret);
         jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
-        let db = admin.firestore();
+        let db = firestore();
         let key = jwt.body.jti + jwt.body.sub;
         return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
             status: "pending",
@@ -638,7 +658,7 @@ const encrypt = (text, electionId) => {
 };
 
 const getDeployedElection = (address) => {
-    let db = admin.firestore();
+    let db = firestore();
     return db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(address).get().then((doc) => {
         if (!doc.exists) {
             throw "Deployed Election does not exist: "+address
@@ -648,7 +668,7 @@ const getDeployedElection = (address) => {
 }
 
 const latestContractVersion = (network) => {
-    let db = admin.firestore();
+    let db = firestore();
     return db.collection(COLLECTION_NETWORK).doc(network).get().then((doc) => {
         if (!doc.exists) {
             console.log("Network "+network+" does not exist.")
@@ -760,7 +780,7 @@ utilApp.delete('/:collection/expired', (req, res) => {
     }
 
     const collection = req.params.collection;
-    let db = admin.firestore();
+    let db = firestore();
 
     //older than 1 week
     const weekInMs = 7 * 24 * 60 * 60 * 1000;
@@ -831,6 +851,20 @@ const adminApp = express();
 adminApp.use(cors());
 adminApp.use(cookieParser());
 adminApp.use(validateFirebaseIdToken);
+
+adminApp.get('/apikey', async (req, res) => {
+    initUuid();
+    let db = firestore();
+    let newKey = uuid();
+    let keyHmac = toHmac(newKey, storageHashSecret)
+    await db.collection(COLLECTION_API_KEYS).doc(keyHmac).set({
+        user: req.user
+    })
+    res.send({
+        "key": newKey
+    })
+})
+
 adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
     let electionId = req.body.electionId || req.body.address;
     if (!electionId || !req.body.count) {
