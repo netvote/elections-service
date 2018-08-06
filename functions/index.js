@@ -293,6 +293,110 @@ const encodeVote = (voteObj) => {
 };
 
 
+// spend totalPoints amongst the choices, all points must be spent
+const validatePointsChoice = (choice, metadata) => {
+    const c = choice;
+    if (!c.selections || !c.selections.points ){
+        throw new Error("INVALID selections be specified for points type");
+    }
+    if (c.selections.points.length !== (metadata.ballotItems.length)) {
+        throw new Error("INVALID points must be allocated for each selection (or have 0 specified)");
+    }
+    let sum = 0;
+    c.selections.points.forEach((points) => {
+        sum += points;
+    })
+    if (sum !== metadata.totalPoints){
+        throw new Error("INVALID not all points allocated, requires total of "+metadata.totalPoints);
+    }
+}
+
+// strict numbering of 1-N for N choices
+const validateRankedChoice = (choice, metadata) => {
+    const c = choice;
+    if (!c.selections || !c.selections.points ) {
+        throw new Error("INVALID selections be specified for ranked type");
+    }
+    if (c.selections.points.length !== (metadata.ballotItems.length)) {
+        throw new Error("INVALID points must be allocated for each selection (or have 0 specified)");
+    }
+    //must contain all of 1,2,3,...N
+    for(let i=1; i<=c.selections.points.length; i++){
+        if(c.selections.points.indexOf(i) === -1){
+            throw new Error("INVALID ranked points must include every number from 1 to number of entries")
+        }
+    }
+}
+
+// each entry represents an index of a choice selected, numberToSelect must be selected
+const validateMultipleChoice = (choice, metadata) => {
+    const c = choice;
+    if (!c.selections || !c.selections.points ) {
+        throw new Error("INVALID selections be specified for ranked type");
+    }
+    if (c.selections.points.length !== metadata.numberToSelect) {
+        throw new Error("INVALID must select "+metadata.numberToSelect+" entries, found="+c.selections.points.length);
+    }
+    for(let i=1; i<=c.selections.points.length; i++){
+        if (c.selections.points[i] < 0) {
+            throw new Error("INVALID selection < 0: " + c.selections.points[i]);
+        }
+        if (c.selections.points[i] > (metadata.ballotItems.length - 1)) {
+            throw new Error("INVALID selection > array: " + c.selections.points[i]);
+        }
+    }
+}
+
+const validateSingleChoice = (choice, metadata) => {
+    const c = choice;
+    if(!c.writeIn){
+        if (c.selection < 0) {
+            throw new Error("INVALID selection < 0: " + c.selection);
+        }
+        if (c.selection > (metadata.ballotItems.length - 1)) {
+            throw new Error("INVALID selection must be between 0 and " + (metadata.ballotItems.length - 1));
+        }
+    } else {
+        if (c.writeIn.length > 200) {
+            throw new Error("INVALID writeIn is limited to 200 characters")
+        }
+    }
+}
+
+const validations = {
+    "points": validatePointsChoice,
+    "ranked": validateRankedChoice,
+    "multiple": validateMultipleChoice,
+    "single": validateSingleChoice
+}
+
+const validateChoices = (choices, decisionsMetadata) => {
+    if (choices.length !== decisionsMetadata.length) {
+        throw new Error("INVALID all questions must be answered");
+    }
+
+    choices.forEach((c, idx) => {
+        let choiceType = decisionsMetadata[idx].type || "single"
+        validations[choiceType](c, decisionsMetadata[idx])
+    });
+ 
+    return true;
+};
+
+// only supports single-tiered ballot currently
+const validateVote = async (vote, metadataLocation) => {
+    initIpfs()
+    const metadata = await ipfsLookup(metadataLocation)
+
+    if(vote.ballotVotes.length !== 1){
+        throw new Error("Expected 1 ballotVote, but saw "+vote.ballotVotes.length)
+    }
+
+    let ballotVote = vote.ballotVotes[0];
+    validateChoices(ballotVote.choices, metadata.decisions);
+};
+
+// supports multi-ballot, but needs to be reworked to avoid chain interaction
 // const validateVote = (vote, poolAddress) => {
 //     return new Promise((resolve, reject) => {
 //         return BasePool.at(poolAddress).getBallotCount().then((bc)=>{
@@ -352,28 +456,6 @@ const removeHashKey = (electionId, collection) => {
     let db = firestore();
     const electionHmac = toHmac(electionId, storageHashSecret);
     return db.collection(collection).doc(electionHmac).delete();
-};
-
-const submitVoteTx = (address, voteId, encryptedVote, passphrase, pushToken, tokenId) => {
-    return submitEthTransaction(COLLECTION_VOTE_TX, {
-        address: address,
-        voteId: voteId,
-        encryptedVote: encryptedVote,
-        passphrase: passphrase,
-        pushToken: pushToken,
-        tokenId: tokenId
-    });
-};
-
-const submitUpdateVoteTx = (address, voteId, encryptedVote, passphrase, pushToken, tokenId) => {
-    return submitEthTransaction(COLLECTION_UPDATE_VOTE_TX, {
-        address: address,
-        voteId: voteId,
-        encryptedVote: encryptedVote,
-        passphrase: passphrase,
-        pushToken: pushToken,
-        tokenId: tokenId
-    });
 };
 
 const submitEthTransaction = (collection, obj) => {
@@ -1224,8 +1306,7 @@ const hashVoteId = async (electionId, voter) => {
     return web3.sha3(voteIdHmac);
 }
 
-const encryptVote = async(electionId, voteBuff, weight) => {
-    let voteObj = await decodeVote(voteBuff);
+const encryptVote = async(electionId, voteObj, weight) => {
     voteObj.weight = weight;
     voteObj.encryptionSeed = Math.floor(Math.random() * 1000000);
     let vote = await encodeVote(voteObj);
@@ -1257,8 +1338,17 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
         try{
             let voteId = await hashVoteId(electionId, req.voter)
             let tokenId = await hashTokenId(electionId, req.tokenKey)
-            let encryptedVote = await encryptVote(electionId, voteBuff, req.weight)
             let el = await getDeployedElection(electionId);
+
+            let encryptedVote;
+            try{
+                let voteObj = await decodeVote(voteBuff);
+                await validateVote(voteObj, el.metadataLocation);
+                encryptedVote = await encryptVote(electionId, voteObj, req.weight)
+            }catch(e){
+                sendError(res, 400, e.message);
+                return;
+            }
 
             let voteObj = {
                 address: el.address,
