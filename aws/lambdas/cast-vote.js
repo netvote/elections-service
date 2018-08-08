@@ -11,18 +11,37 @@ const votedAlready = async (addr, voteId, BasePool) => {
     return res !== '';
 };
 
-const castVote = async(voteObj, BasePool) => {
+const castVote = async(voteObj, BasePool, version) => {
     console.log("casting vote from "+nv.gatewayAddress())
     const nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    let tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+    let tx;
+    if(version > 21){
+        if(voteObj.proof){
+            tx = await BasePool.at(voteObj.address).castVoteWithProof(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, voteObj.proof, {nonce: nonce, from: nv.gatewayAddress()})
+        } else {
+            tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+        }
+    } else {
+        //OLD ELECTIONS
+        tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+    }
     console.log("completed casting vote")
     return tx;
 };
 
-const updateVote = async(voteObj, BasePool) => {
+const updateVote = async(voteObj, BasePool, version) => {
     console.log("updating vote from "+nv.gatewayAddress())
     const nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    let tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+    let tx;
+    if(version > 21){
+        if(voteObj.proof){
+            tx = await BasePool.at(voteObj.address).updateVoteWithProof(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, voteObj.proof, {nonce: nonce, from: nv.gatewayAddress()})
+        } else {
+            tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+        }
+    } else{
+        tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+    }
     console.log("completed updating vote")
     return tx;
 };
@@ -36,7 +55,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         let BasePool = await nv.BasePool(version);
         let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
         const ethTransaction = (update) ? updateVote : castVote;
-        const tx = await ethTransaction(event.vote, BasePool);
+        const tx = await ethTransaction(event.vote, BasePool, version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"
