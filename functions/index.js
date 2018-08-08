@@ -28,11 +28,6 @@ Array.prototype.pushArray = function (arr) {
 let crypto;
 let nJwt;
 
-const PHASE_BUILDING = 0;
-const PHASE_VOTING = 1;
-const PHASE_CLOSED = 2;
-
-const COLLECTION_DEMO_ELECTIONS = "demoElections";
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_VOTER_PIN_HASH_SECRET = "voterPinHashSecrets";
@@ -40,8 +35,6 @@ const COLLECTION_ENCRYPTION_KEYS = "encryptionKeys";
 const COLLECTION_NETWORK = "network";
 const COLLECTION_TALLY_TX = "transactionTally";
 const COLLECTION_VOTE_TX = "transactionCastVote";
-const COLLECTION_UPDATE_VOTE_TX = "transactionUpdateVote";
-const COLLECTION_ENCRYPTION_TX = "transactionPublishKey";
 const COLLECTION_CREATE_ELECTION_TX = "transactionCreateElection";
 const COLLECTION_ACTIVATE_ELECTION_TX = "transactionActivateElection";
 const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
@@ -292,18 +285,20 @@ const encodeVote = (voteObj) => {
     })
 };
 
-
+// NOTE: these validate functions are copied from the tally API
+// TODO: import tally API or extract validation into library
 // spend totalPoints amongst the choices, all points must be spent
 const validatePointsChoice = (choice, metadata) => {
     const c = choice;
-    if (!c.selections || !c.selections.points ){
+    const selections = c.pointsAllocations;
+    if (!selections || !selections.points ){
         throw new Error("INVALID selections be specified for points type");
     }
-    if (c.selections.points.length !== (metadata.ballotItems.length)) {
+    if (selections.points.length !== (metadata.ballotItems.length)) {
         throw new Error("INVALID points must be allocated for each selection (or have 0 specified)");
     }
     let sum = 0;
-    c.selections.points.forEach((points) => {
+    selections.points.forEach((points) => {
         sum += points;
     })
     if (sum !== metadata.totalPoints){
@@ -314,15 +309,16 @@ const validatePointsChoice = (choice, metadata) => {
 // strict numbering of 1-N for N choices
 const validateRankedChoice = (choice, metadata) => {
     const c = choice;
-    if (!c.selections || !c.selections.points ) {
+    const selections = c.pointsAllocations;
+    if (!selections || !selections.points ) {
         throw new Error("INVALID selections be specified for ranked type");
     }
-    if (c.selections.points.length !== (metadata.ballotItems.length)) {
+    if (selections.points.length !== (metadata.ballotItems.length)) {
         throw new Error("INVALID points must be allocated for each selection (or have 0 specified)");
     }
     //must contain all of 1,2,3,...N
-    for(let i=1; i<=c.selections.points.length; i++){
-        if(c.selections.points.indexOf(i) === -1){
+    for(let i=1; i<=selections.points.length; i++){
+        if(selections.points.indexOf(i) === -1){
             throw new Error("INVALID ranked points must include every number from 1 to number of entries")
         }
     }
@@ -331,18 +327,26 @@ const validateRankedChoice = (choice, metadata) => {
 // each entry represents an index of a choice selected, numberToSelect must be selected
 const validateMultipleChoice = (choice, metadata) => {
     const c = choice;
-    if (!c.selections || !c.selections.points ) {
+    const selections = c.indexSelections;
+    if (!selections || !selections.indexes ) {
         throw new Error("INVALID selections be specified for ranked type");
     }
-    if (c.selections.points.length !== metadata.numberToSelect) {
-        throw new Error("INVALID must select "+metadata.numberToSelect+" entries, found="+c.selections.points.length);
+    // cannot select more than allowed (default max is number of choices)
+    let maxSelect = metadata.maxSelect || metadata.ballotItems.length; 
+    if (selections.indexes.length > maxSelect) {
+        throw new Error("INVALID must select fewer than "+maxSelect+" entries, found="+selections.indexes.length);
     }
-    for(let i=1; i<=c.selections.points.length; i++){
-        if (c.selections.points[i] < 0) {
-            throw new Error("INVALID selection < 0: " + c.selections.points[i]);
+    // cannot select fewer than allowed (default minum is 1.  0 requires explicit Abstain)
+    let minSelect = metadata.minSelect || 1;
+    if (selections.indexes.length < minSelect) {
+        throw new Error("INVALID must select more than "+minSelect+" entries, found="+selections.indexes.length);
+    }
+    for(let i=1; i<=selections.indexes.length; i++){
+        if (selections.indexes[i] < 0) {
+            throw new Error("INVALID selection < 0: " + selections.indexes[i]);
         }
-        if (c.selections.points[i] > (metadata.ballotItems.length - 1)) {
-            throw new Error("INVALID selection > array: " + c.selections.points[i]);
+        if (selections.indexes[i] > (metadata.ballotItems.length - 1)) {
+            throw new Error("INVALID selection > array: " + selections.indexes[i]);
         }
     }
 }
@@ -350,15 +354,14 @@ const validateMultipleChoice = (choice, metadata) => {
 const validateSingleChoice = (choice, metadata) => {
     const c = choice;
     if(!c.writeIn){
+        if(c.selection === undefined || c.selection === null){
+            throw new Error("INVALID selection must be set")
+        }
         if (c.selection < 0) {
             throw new Error("INVALID selection < 0: " + c.selection);
         }
         if (c.selection > (metadata.ballotItems.length - 1)) {
-            throw new Error("INVALID selection must be between 0 and " + (metadata.ballotItems.length - 1));
-        }
-    } else {
-        if (c.writeIn.length > 200) {
-            throw new Error("INVALID writeIn is limited to 200 characters")
+            throw new Error("INVALID selection > array: " + c.selection);
         }
     }
 }
