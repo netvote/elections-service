@@ -104,8 +104,10 @@ const initQr = () => {
 }
 
 const initIpfs = () => {
-    let IPFS = require('ipfs-mini');
-    ipfs = new IPFS({ host: 'gateway.ipfs.io', port: 443, protocol: 'https' });
+    if(!ipfs){
+        let IPFS = require('ipfs-mini');
+        ipfs = new IPFS({ host: 'gateway.ipfs.io', port: 443, protocol: 'https' });
+    }
 };
 
 const initUuid = () => {
@@ -228,22 +230,28 @@ const validateFirebaseIdToken = async (req, res, next) => {
     });
 };
 
-const ipfsLookup = (metadataLocation) => {
+const getFromIPFS = (location) => {
+    initIpfs();
     return new Promise((resolve, reject) => {
-        ipfs.catJSON(metadataLocation, (err, metadata) => {
+        ipfs.catJSON(location, (err, obj) => {
             if (err) {
                 console.error(err);
                 reject(err);
             }
-            let decisions = [];
-            metadata.ballotGroups.forEach((bg) => {
-                decisions.pushArray(bg.ballotSections);
-            });
-            resolve({
-                decisions: decisions
-            });
+            resolve(obj)
         });
     })
+}
+
+const ipfsLookup = async (metadataLocation) => {
+    let metadata = await getFromIPFS(metadataLocation);
+    let decisions = [];
+    metadata.ballotGroups.forEach((bg) => {
+        decisions.pushArray(bg.ballotSections);
+    });
+    return {
+        decisions: decisions
+    }
 };
 
 const voteProto = () => {
@@ -387,12 +395,16 @@ const validateChoices = (choices, decisionsMetadata) => {
 };
 
 // only supports single-tiered ballot currently
-const validateVote = async (vote, metadataLocation) => {
+const validateVote = async (vote, metadataLocation, requireProof) => {
     initIpfs()
     const metadata = await ipfsLookup(metadataLocation)
 
     if(vote.ballotVotes.length !== 1){
         throw new Error("Expected 1 ballotVote, but saw "+vote.ballotVotes.length)
+    }
+
+    if(requireProof && !vote.signatureSeed){
+        throw new Error("signatureSeed must be set if proofs are required")
     }
 
     let ballotVote = vote.ballotVotes[0];
@@ -1057,12 +1069,13 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
     });
 });
 
-adminApp.post('/election', (req, res) => {
+adminApp.post('/election', async (req, res) => {
     let isPublic = !!(req.body.isPublic);
     let network = req.body.network || "ropsten";
     let metadataLocation = req.body.metadataLocation;
     let allowUpdates = !!(req.body.allowUpdates);
     let autoActivate = !!(req.body.autoActivate);
+    let requireProof = !!(req.body.requireProof);
 
     if (!metadataLocation) {
         sendError(res, 400, "metadataLocation is required");
@@ -1074,50 +1087,43 @@ adminApp.post('/election', (req, res) => {
         return;
     }
 
-    // 3 = create election, transfer vote, post encryption key
-    // 2 = create election, transfer vote
-    
-    let version;
-    return latestContractVersion(network).then((v) => {
-        version = v;
-        return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
-            type: "basic",
-            network: network,
-            uid: req.user.uid,
-            metadataLocation: metadataLocation,
-            version: v
-        })
-    }).then((ref) => {
-        return atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id).then(async () => {
-            let payload = {
-                version: version,
-                election: {
-                    type: "basic",
-                    allowUpdates: allowUpdates,
-                    isPublic: isPublic,
-                    metadataLocation: metadataLocation,
-                    autoActivate: autoActivate,
-                    uid: req.user.uid
-                },
-                callback: COLLECTION_CREATE_ELECTION_TX + "/" + ref.id
-            }
-            console.log("sending payload: "+JSON.stringify(payload))
-            let lambdaName = (network === "netvote") ? 'private-create-election'  : 'netvote-create-election';
-            try{
-                await asyncInvokeLambda(lambdaName, payload);
-            }catch(e){
-                handleTxError(ref, e);
-            }
-            res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
-        }).catch((e) => {
-            return handleTxError(ref, e);
-        });
-        
-    }).catch((e) => {
-        console.error(e);
-        console.log("error while creating election: "+e)
-        sendError(res, 500, e.message);
+    let version = await latestContractVersion(network);
+
+    let ref = await submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
+        type: "basic",
+        network: network,
+        uid: req.user.uid,
+        metadataLocation: metadataLocation,
+        version: version
     });
+
+    try{
+        //prevents multiple firebase executions from double-sending
+        await atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id);
+
+        let payload = {
+            version: version,
+            election: {
+                type: "basic",
+                allowUpdates: allowUpdates,
+                isPublic: isPublic,
+                requireProof: requireProof,
+                metadataLocation: metadataLocation,
+                autoActivate: autoActivate,
+                isDemo: true, //TODO: make dynamic - for demos, anyone can vote on any election
+                uid: req.user.uid
+            },
+            callback: COLLECTION_CREATE_ELECTION_TX + "/" + ref.id
+        }
+
+        let lambdaName = (network === "netvote") ? 'private-create-election'  : 'netvote-create-election';
+        await asyncInvokeLambda(lambdaName, payload);
+
+        res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
+    
+    } catch(e) {
+        handleTxError(ref, e);
+    }
 });
 
 adminApp.post('/token/election', (req, res) => {
@@ -1302,7 +1308,6 @@ voterApp.post('/scan', voterTokenCheck, (req, res) => {
     });
 });
 
-
 const hashVoteId = async (electionId, voter) => {
     let secret = await getHashKey(electionId, COLLECTION_HASH_SECRETS);
     const voteIdHmac = toHmac(electionId + ":" + voter, secret);
@@ -1321,13 +1326,36 @@ const hashTokenId = async (electionId, tokenKey) => {
     return web3.sha3(toHmac(tokenKey, secret));
 }
 
+let ursa;
+const initUrsa = () => {
+    if(!ursa){
+        ursa = require("ursa")
+    }
+}
+
+const validateProof = async (voteBase64, proof) => {
+    if(!proof){
+        throw new Error("proof is required")
+    }
+    const proofObj = await getFromIPFS(proof);
+    if(!proofObj.signature){
+        throw new Error("signature is not specified in IPFS proof")
+    }
+    if(!proofObj.publicKey){
+        throw new Error("publicKey is not specified in IPFS proof")
+    }
+    initUrsa();
+    const pub = ursa.createPublicKey(proofObj.publicKey, 'base64');    
+    return pub.hashAndVerify('md5', new Buffer(voteBase64), proofObj.signature, "base64");
+}
+
 voterApp.post('/cast', voterTokenCheck, async (req, res) => {
     initCrypto();
     initUuid();
     let reqId = uuid();
     let voteBuff;
     let electionId = req.pool;
-    let passphrase = req.body.passphrase || "none";
+    const proof = req.body.proof;
     try {
         voteBuff = Buffer.from(req.body.vote, 'base64');
     } catch (e) {
@@ -1343,10 +1371,23 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             let tokenId = await hashTokenId(electionId, req.tokenKey)
             let el = await getDeployedElection(electionId);
 
+            if(el.requireProof){
+                try{
+                    let validProof = await validateProof(req.body.vote, proof);
+                    if(!validProof){
+                        sendError(res, 400, "submitted signature does not match")
+                        return;
+                    }
+                }catch(e){
+                    sendError(res, 400, e.message);
+                    return;
+                }
+            }
+
             let encryptedVote;
             try{
                 let voteObj = await decodeVote(voteBuff);
-                await validateVote(voteObj, el.metadataLocation);
+                await validateVote(voteObj, el.metadataLocation, el.requireProof);
                 encryptedVote = await encryptVote(electionId, voteObj, req.weight)
             }catch(e){
                 sendError(res, 400, e.message);
@@ -1357,9 +1398,9 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
                 address: el.address,
                 version: el.version,
                 network: el.network,
+                proof: proof,
                 voteId: voteId,
                 encryptedVote: encryptedVote,
-                passphrase: passphrase,
                 tokenId: tokenId
             };
 
@@ -1384,6 +1425,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             res.send({ txId: jobRef.id, collection: COLLECTION_VOTE_TX });
 
         }catch(e){
+            console.error("error occured", e);
             sendError(res, 500, "error occured");
         }
     }
@@ -1444,7 +1486,8 @@ tallyApp.get('/election/:electionId', async (req, res) => {
             await asyncInvokeLambda(lambdaName, {
                 callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
                 address: deployedElection.address,
-                version: deployedElection.version
+                version: deployedElection.version,
+                validateSignatures: deployedElection.requireProof
             })
         }catch(e){
             handleTxError(jobRef, e)

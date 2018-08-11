@@ -15,6 +15,7 @@ exports.handler = async (event, context, callback) => {
     }
     try {
         let version = event.version ? event.version : 15;
+        let validateSignatures = !!(event.validateSignatures);
         let address = event.address;
         if(!address){
             throw new Error("must specify address in event")
@@ -26,6 +27,7 @@ exports.handler = async (event, context, callback) => {
             electionAddress: address,
             version: version,
             provider: ethUrl,
+            validateSignatures: validateSignatures,
             resultsUpdateCallback: async (res) => {
                 counter++;
                 if(counter % updateEveryNVotes == 0){

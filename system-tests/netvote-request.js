@@ -54,7 +54,7 @@ const netvoteUnsafeRequest = (method, path, postObj, headers) => {
       }
   
       const options = {
-        hostname: 'netvote2.firebaseapp.com',
+        hostname: 'demo.netvote.io',
         port: 443,
         path: `${path}`,
         method: method,

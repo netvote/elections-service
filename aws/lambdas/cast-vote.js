@@ -23,7 +23,7 @@ const castVote = async(voteObj, BasePool, version) => {
         }
     } else {
         //OLD ELECTIONS
-        tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+        tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, "none", voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
     }
     console.log("completed casting vote")
     return tx;
@@ -40,7 +40,7 @@ const updateVote = async(voteObj, BasePool, version) => {
             tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
         }
     } else{
-        tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.passphrase, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+        tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, "none", voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
     }
     console.log("completed updating vote")
     return tx;

@@ -26,16 +26,7 @@ const generateHashKey = async(collection, id) =>{
     return secret;
 }
 
-//TODO: remove this
-const addDemoElection = async(addr) =>{
-    return firebaseUpdater.createDoc("demoElections", addr, {
-        enabled: {
-            booleanValue: true
-        }
-    })
-}
-
-const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate) =>{
+const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof) => {
     const status = (autoActivate) ? "voting" : "building";
 
     return firebaseUpdater.createDoc("deployedElections", electionId, {
@@ -47,6 +38,9 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
         },
         address: {
             stringValue: addr
+        },
+        requireProof: {
+            booleanValue: requireProof
         },
         metadataLocation: {
             stringValue: metadataLocation
@@ -61,7 +55,7 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
             stringValue: uid
         },
         demo: {
-            booleanValue: true
+            booleanValue: isDemo
         }
     })
 }
@@ -116,7 +110,7 @@ const createElection = async(electionId, election, version) => {
     
     await Promise.all(setupTasks);
 
-    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate);
+    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate, election.isDemo, election.requireProof);
     return el;
 }
 

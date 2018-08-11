@@ -107,7 +107,8 @@ Body:
 	"metadataLocation": "ipfs-address",
 	"allowUpdates": true,
 	"isPublic": true,
-	"network": "ropsten or netvote"
+	"network": "ropsten or netvote",
+	"requireProof": true
 }
 ```
 - **autoActivate**: (optional) allow voting immediately
@@ -115,6 +116,7 @@ Body:
 - **allowUpdates**: (optional) allow voters to update their vote after the fact (enforced on chain)
 - **isPublic**: (optional) generate and post the encryption key to the ballot immediately so tallying can occur during the election
 - **network**: (optional) deploy to either ropsten (eth test net) or netvote (private proof-of-authority network)
+- **requireProof**: (optional) if true, votes require a public key and signature as an IPFS reference in a proof parameter
 
 Returns:
 ```
