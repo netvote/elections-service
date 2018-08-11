@@ -78,12 +78,12 @@ Body:
 ```
 {
 	"vote": "base64-of-serialized-proto",
-	"passphrase": "any text",
+	"proof": "IPFS-ID",
 	"pushToken": "abc123"
 }
 ```
 - **vote**: (required) this is a BASE64-encoded serialized Vote message from [Vote.proto](https://github.com/netvote/elections-solidity/blob/master/protocol/vote.proto)
-- **passphrase**: (optional) allows a voter to identify their vote on the blockchain without decrypting (pre-close)
+- **proof**: (optional) references a document in IPFS containing the JSON: `{ "publicKey": "...", "signature": "..."}`
 - **pushToken**: (optional) API will kindly send a push message to voter when vote has been cast
 
 Returns:
@@ -92,6 +92,7 @@ Returns:
 ```
 Note: 
 - The firebase collection reference can be polled for completion.  (obj.status = complete) 
+- The signature must sign a base64 payload containing only `ballotVotes` and `signatureSeed`
 
 Admin APIs
 -------------------
