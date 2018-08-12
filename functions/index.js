@@ -41,6 +41,7 @@ const COLLECTION_CLOSE_ELECTION_TX = "transactionCloseElection";
 const COLLECTION_JWT_TRANSACTION = "transactionJwt";
 const COLLECTION_DEPLOYED_ELECTIONS = "deployedElections"
 const COLLECTION_API_KEYS = "apiKeys"
+const COLLECTION_ELECTION_JWT_KEYS = "electionJwtKeys";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -657,41 +658,58 @@ const checkPin = (electionId, pin, pinHmac, decoyHmac) => {
     })
 };
 
-const voterTokenCheck = (req, res, next) => {
-    initJwt();
-    if (!req.token) {
-        unauthorized(res);
-        return;
-    }
-    nJwt.verify(req.token, voteTokenSecret, function (err, verifiedJwt) {
-        if (err) {
+const getJwtSecretForElection = async (electionId) => {
+    const secret = await firestore().collection(COLLECTION_ELECTION_JWT_KEYS).doc(electionId).get();
+    return secret.exists ? secret.data().secret : voteTokenSecret;
+}
+
+const voterTokenCheck = async (req, res, next) => {
+    try{
+        initJwt();
+        if (!req.token) {
             unauthorized(res);
-        } else {
-            req.voter = verifiedJwt.body.sub;
-            req.pool = verifiedJwt.body.scope;
-            req.weight = verifiedJwt.body.weight;
-            req.tokenKey = verifiedJwt.body.jti + verifiedJwt.body.sub;
-            let w = parseFloat(verifiedJwt.body.weight);
-            if (isNaN(w)) {
-                req.weight = "1.0";
-            }
-            if (verifiedJwt.body.pin) {
-                if (!req.body.pin) {
-                    unauthorized(res);
-                    return;
-                }
-                checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verifiedJwt.body.decoyPin).then((decoy) => {
-                    req.decoy = decoy;
-                    next();
-                }).catch((e) => {
-                    console.error(e);
-                    unauthorized(res);
-                });
-            } else {
-                return next();
-            }
+            return;
         }
-    });
+        
+        //lookup secret by electionId inside token
+        //default to demo key
+        const key = req.token.split(".")[1]
+        const electionId = JSON.parse(new Buffer(key, "base64").toString("ascii")).scope;
+        const jwtSecret = await getJwtSecretForElection(electionId);
+
+        nJwt.verify(req.token, jwtSecret, function (err, verifiedJwt) {
+            if (err) {
+                unauthorized(res);
+            } else {
+                req.voter = verifiedJwt.body.sub;
+                req.pool = verifiedJwt.body.scope;
+                req.weight = verifiedJwt.body.weight;
+                req.tokenKey = verifiedJwt.body.jti + verifiedJwt.body.sub;
+                let w = parseFloat(verifiedJwt.body.weight);
+                if (isNaN(w)) {
+                    req.weight = "1.0";
+                }
+                if (verifiedJwt.body.pin) {
+                    if (!req.body.pin) {
+                        unauthorized(res);
+                        return;
+                    }
+                    checkPin(req.pool, req.body.pin, verifiedJwt.body.pin, verifiedJwt.body.decoyPin).then((decoy) => {
+                        req.decoy = decoy;
+                        next();
+                    }).catch((e) => {
+                        console.error(e);
+                        unauthorized(res);
+                    });
+                } else {
+                    return next();
+                }
+            }
+        });
+    }catch(e){
+        console.error("error evaluating token", e);
+        unauthorized(res);
+    }  
 };
 
 const markJwtStatus = (key, status) => {
@@ -709,7 +727,7 @@ const markJwtStatus = (key, status) => {
     });
 };
 
-const createWeightedVoterJwt = (electionId, voterId, weight) => {
+const createWeightedVoterJwt = async (electionId, voterId, weight) => {
     initJwt();
     let claims = {
         iss: "https://netvote.io/",
@@ -717,25 +735,24 @@ const createWeightedVoterJwt = (electionId, voterId, weight) => {
         scope: electionId,
         weight: weight + ""
     };
-    return getPins(electionId, voterId).then((pins) => {
-        if (pins.pin) {
-            claims.pin = pins.pin;
-        }
-        if (pins.decoyPin) {
-            claims.decoyPin = pins.decoyPin;
-        }
-        let jwt = nJwt.create(claims, voteTokenSecret);
-        jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
-        let db = firestore();
-        let key = jwt.body.jti + jwt.body.sub;
-        return db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
-            status: "pending",
-            timestamp: new Date().getTime()
-        }).then(() => {
-            return jwt.compact();
-        })
-    })
 
+    let pins = await getPins(electionId, voterId);
+    if (pins.pin) {
+        claims.pin = pins.pin;
+    }
+    if (pins.decoyPin) {
+        claims.decoyPin = pins.decoyPin;
+    }
+    const jwtSecret = await getJwtSecretForElection(electionId);
+    let jwt = nJwt.create(claims, jwtSecret);
+    jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
+    let db = firestore();
+    let key = jwt.body.jti + jwt.body.sub;
+    await db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
+        status: "pending",
+        timestamp: new Date().getTime()
+    })
+    return jwt.compact();
 };
 
 const createVoterJwt = (electionId, voterId) => {
