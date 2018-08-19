@@ -107,7 +107,7 @@ const initQr = () => {
 const initIpfs = () => {
     if(!ipfs){
         let IPFS = require('ipfs-mini');
-        ipfs = new IPFS({ host: 'gateway.ipfs.io', port: 443, protocol: 'https' });
+        ipfs = new IPFS({ host: 'ipfs.netvote.io', port: 443, protocol: 'https' });
     }
 };
 

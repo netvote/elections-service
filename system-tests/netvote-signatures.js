@@ -5,7 +5,7 @@ const uuid = require('uuid/v4');
 
 let Vote;
 
-const ipfs = new IPFS({ host: 'ipfs.infura.io', protocol: 'https' });
+const ipfs = new IPFS({ host: 'ipfs.netvote.io', protocol: 'https', port: 8443 });
 
 const saveToIPFS = (data) => {
     return new Promise((resolve, reject) => {

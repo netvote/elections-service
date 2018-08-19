@@ -70,6 +70,11 @@ module.exports = {
     Vote: (version) => {
         return getVoteAbi(version)
     },
+    Ping: async () =>{
+        let vc = await getVoteAbi(22)
+        let v = await vc.deployed();
+        await v.owner();
+    },
     deployedVoteContract: async (version) => {
         let vc = await getVoteAbi(version)
         if(version < 17){

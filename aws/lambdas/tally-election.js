@@ -23,6 +23,8 @@ exports.handler = async (event, context, callback) => {
 
         let counter = 0;
 
+        let badVotes = [];
+
         let result = await tally.tallyElection({
             electionAddress: address,
             version: version,
@@ -37,6 +39,13 @@ exports.handler = async (event, context, callback) => {
                         results: JSON.stringify(res.result)
                     }, true);
                 }
+            },
+            badVoteCallback: async (obj)=>{
+                console.warn("BADVOTE:"+JSON.stringify(obj))
+                badVotes.push(obj);
+                await firebaseUpdater.updateStatus(event.callback, {
+                    badVotes: JSON.stringify(badVotes)
+                }, true);
             }
         })
 
