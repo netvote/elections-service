@@ -1367,11 +1367,14 @@ const validateProof = async (voteBase64, proof) => {
 }
 
 voterApp.post('/cast', voterTokenCheck, async (req, res) => {
+    console.log("/cast vote started")
     initCrypto();
     initUuid();
     let reqId = uuid();
     let voteBuff;
     let electionId = req.pool;
+    console.info(`CAST VOTE:  election=${electionId}, reqId=${reqId}`)
+
     const proof = req.body.proof;
     try {
         voteBuff = Buffer.from(req.body.vote, 'base64');
@@ -1381,6 +1384,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
     }
     if (!voteBuff) {
         sendError(res, 400, "vote is required");
+        return;
     } else {
 
         try{
@@ -1429,8 +1433,6 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
 
             await markJwtStatus(req.tokenKey, "voted")
             let lambdaName = (el.network == "netvote") ? "private-cast-vote" : "netvote-cast-vote";
-            console.log(reqId+": START ASYNC LAMBDA: "+lambdaName+", payload="+JSON.stringify(voteObj)+", ref="+jobRef.id);
-
             try{
                 await asyncInvokeLambda(lambdaName, {
                     callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
@@ -1440,11 +1442,12 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
                handleTxError(jobRef, e); 
             }
             res.send({ txId: jobRef.id, collection: COLLECTION_VOTE_TX });
-
         }catch(e){
             console.error("error occured", e);
             sendError(res, 500, "error occured");
+            return;
         }
+        return;
     }
 });
 
