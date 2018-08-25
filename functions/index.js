@@ -42,6 +42,9 @@ const COLLECTION_JWT_TRANSACTION = "transactionJwt";
 const COLLECTION_DEPLOYED_ELECTIONS = "deployedElections"
 const COLLECTION_API_KEYS = "apiKeys"
 const COLLECTION_ELECTION_JWT_KEYS = "electionJwtKeys";
+const COLLECTION_BALLOT_GROUPS = "ballotGroups";
+const COLLECTION_BALLOT_GROUP_JWT_SECRET = "ballotGroupsJwtSecret";
+const COLLECTION_BALLOT_GROUP_ASSIGNMENTS = "ballotGroupAssignments";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -193,6 +196,18 @@ const getUserForApiKey = async (key) => {
     return null;
 }
 
+const getOrgId = async (uid) => {
+    const db = firestore();
+    const user = await db.collection("user").doc(uid).get();
+    if(user.exists){
+        const org = await user.data().currentOrg.get();
+        if(org.exists){
+            return org.id;
+        }
+    }
+    return null;
+}
+
 // from https://github.com/firebase/functions-samples/blob/master/authorized-https-endpoint/functions/index.js
 const validateFirebaseIdToken = async (req, res, next) => {
     if ((!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) &&
@@ -215,20 +230,37 @@ const validateFirebaseIdToken = async (req, res, next) => {
     //API KEY AUTH
     let keyUser = await getUserForApiKey(idToken);
     if(keyUser){
+        let orgId = await getOrgId(keyUser);
         req.user = {
-            uid: keyUser
+            uid: keyUser,
+            orgId: orgId
         }
         return next();
     }
 
     //FIREBASE AUTH
-    admin.auth().verifyIdToken(idToken).then(decodedIdToken => {
+    admin.auth().verifyIdToken(idToken).then( async (decodedIdToken) => {
         req.user = decodedIdToken;
+        req.user.orgId = await getOrgId(req.user.uid);
         next();
     }).catch(error => {
         console.error('Error while verifying Firebase ID token:', error);
         unauthorized(res);
     });
+};
+
+const ballotGroupAuthorize = async (req, res, next) => {
+    let db = firestore();
+    let bg = await db.collection(COLLECTION_BALLOT_GROUPS).doc(req.params.groupId).get();
+    if(!bg.exists){
+        sendError(res, 404, "group not found")
+        return;
+    }
+    if(bg.data().orgid !== req.user.orgId){
+        unauthorized(res);
+        return;
+    }
+    return next();
 };
 
 const getFromIPFS = (location) => {
@@ -411,49 +443,6 @@ const validateVote = async (vote, metadataLocation, requireProof) => {
     let ballotVote = vote.ballotVotes[0];
     validateChoices(ballotVote.choices, metadata.decisions);
 };
-
-// supports multi-ballot, but needs to be reworked to avoid chain interaction
-// const validateVote = (vote, poolAddress) => {
-//     return new Promise((resolve, reject) => {
-//         return BasePool.at(poolAddress).getBallotCount().then((bc)=>{
-//             const ballotCount = parseInt(bc);
-//             if (vote.ballotVotes.length !== ballotCount) {
-//                 reject("vote must have " + ballotCount + " ballotVotes, actual=" + vote.ballotVotes.length)
-//             }
-//             initIpfs();
-//             for (let i = 0; i < ballotCount; i++) {
-//                 let ballotVote = vote.ballotVotes[i];
-//                 // validate this ballot vote
-//                 BasePool.at(poolAddress).getBallot(i).then((ballotAddress) => {
-//                     return BaseBallot.at(ballotAddress).metadataLocation()
-//                 }).then((location) => {
-//                     return ipfsLookup(location)
-//                 }).then((metadata) => {
-
-//                     if (ballotVote.choices.length !== metadata.decisions.length) {
-//                         reject("ballotVotes[" + i + "] should have " + metadata.decisions.length + " choices but had " + ballotVote.choices.length);
-//                     }
-
-//                     ballotVote.choices.forEach((c, idx) => {
-//                         if (!c.writeIn) {
-//                             if (c.selection < 0) {
-//                                 reject("ballotVotes[" + i + "] choice[" + idx + "] cannot have a selection less than 0")
-//                             }
-//                             if (c.selection > (metadata.decisions[idx].ballotItems.length - 1)) {
-//                                 reject("ballotVotes[" + i + "] choice[" + idx + "] must be between 0 and " + (metadata.decisions[idx].ballotItems.length - 1) + ", was=" + c.selection)
-//                             }
-//                         } else {
-//                             if (c.writeIn.length > 200) {
-//                                 reject("writeIn is limited to 200 characters")
-//                             }
-//                         }
-//                     });
-//                     resolve(true);
-//                 });
-//             }
-//         })
-//     });
-// };
 
 const electionOwnerCheck = (req, res, next) => {
     let electionId = req.body.electionId || req.body.address;
@@ -727,6 +716,26 @@ const markJwtStatus = (key, status) => {
     });
 };
 
+const getJwtSecretForGroup = async (groupId) => {
+    return await getHashKey(groupId, COLLECTION_BALLOT_GROUP_JWT_SECRET);
+}
+
+const createGroupVoterJwt = async (groupId) => {
+    initUuid();
+    initJwt();
+    let sub = uuid();
+    let claims = {
+        sub: sub,
+        groupId: groupId,
+        iss: "https://netvote.io"
+    }
+    const jwtSecret = await getJwtSecretForGroup(groupId);
+    let jwt = nJwt.create(claims, jwtSecret);
+    //1 year
+    jwt.setExpiration(new Date().getTime() + (24 * 365 * 60 * 60 * 1000));
+    return jwt.compact();
+}
+
 const createWeightedVoterJwt = async (electionId, voterId, weight) => {
     initJwt();
     let claims = {
@@ -966,18 +975,97 @@ adminApp.use(cors());
 adminApp.use(cookieParser());
 adminApp.use(validateFirebaseIdToken);
 
+// create ballot group (for conferences, etc)
+adminApp.post("/ballotGroup", async(req, res) => {
+    initUuid();
+    if(!req.body.name){
+        sendError(res, 400, "name is required");
+        return;
+    }
+    if(!req.body.active){
+        sendError(res, 400, "active is required");
+        return;
+    }
+    let active = !!(req.body.active);
+    let db = firestore();
+    let id = uuid();
+    await db.collection(COLLECTION_BALLOT_GROUPS).doc(id).set({
+        name: req.body.name,
+        description: req.body.description || "",
+        active: active,
+        image: req.body.image || "",
+        icon: req.body.icon || "",
+        user: req.user.uid,
+        orgid: req.user.orgId
+    });
+
+    res.send({id: id})
+    return;
+})
+
+// create a reusable voter identity JWT for a ballotGroup
+adminApp.get("/ballotGroup/:groupId/voter/jwt", ballotGroupAuthorize, async(req, res) => {
+    let jwt = await createGroupVoterJwt(req.params.groupId);
+    res.send({groupId: req.params.groupId, token: jwt});
+})
+
 adminApp.get('/apikey', async (req, res) => {
     initUuid();
     let db = firestore();
     let newKey = uuid();
     let keyHmac = toHmac(newKey, storageHashSecret)
     await db.collection(COLLECTION_API_KEYS).doc(keyHmac).set({
-        user: req.user
+        user: req.user.uid
     })
     res.send({
         "key": newKey
     })
 })
+
+adminApp.post('/election/ballotGroupAssignment', electionOwnerCheck, async (req, res) => {
+    if (!req.body.electionId) {
+        sendError(res, 400, "electionId is required");
+        return;
+    }
+    if (!req.body.groupId) {
+        sendError(res, 400, "groupId is required");
+        return;
+    }
+    if (!req.body.shortCode) {
+        sendError(res, 400, "shortCode is required");
+        return;
+    }
+
+    let electionId = req.body.electionId;
+    let groupId = req.body.groupId;
+    let shortCode = req.body.shortCode;
+
+    let db = firestore();
+    let docKey = `${groupId}_${shortCode}`;
+    let d = await db.collection(COLLECTION_BALLOT_GROUP_ASSIGNMENTS).doc(docKey).get();
+    if(d.exists){
+        sendError(res, 400, "short code "+shortCode+" alread exists for group");
+        return;
+    }
+
+    let assignment = {};
+    assignment[groupId] = shortCode;
+
+    await db.collection(COLLECTION_BALLOT_GROUP_ASSIGNMENTS).doc(docKey).set({
+        uid: req.user.uid,
+        orgid: req.user.orgId,
+        groupId: groupId,
+        electionId: electionId,
+        shortCode: shortCode
+    })
+
+    await db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(electionId).set({
+        assignments: assignment
+    }, {merge:true});
+
+    res.send({"status": "ok"})
+    return;
+});
 
 adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
     let electionId = req.body.electionId || req.body.address;

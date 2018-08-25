@@ -13,9 +13,18 @@ const config = {
 };
 
 const app = firebase.initializeApp(config);
+let firebaseDb;
+
+const firestore = () => {
+  if(!firebaseDb){
+    firebaseDb = app.firestore();
+    firebaseDb.settings({ timestampsInSnapshots: true})
+  }
+  return firebaseDb;
+}
 
 const netvoteRequest = async (method, path, postObj, headers) => {
-  let maxretries = 3;
+  let maxretries = 2;
   for(let count =0; count<maxretries; count++){
     try{
       let res = await netvoteUnsafeRequest(method, path, postObj, headers);
@@ -104,8 +113,7 @@ const netvotePost = (path, postObj, headers) => {
 const netvoteTxRequest = async(method, path, postObj, headers) => {
   return new Promise(async (resolve, reject) => {
     let txRes = await netvoteRequest(method, path, postObj, headers);
-    let db = app.firestore();
-    db.settings({ timestampsInSnapshots: true})
+    let db = firestore();
     if(!txRes.collection) {
       reject(new Error("Expected txRes to have txId: "+JSON.stringify(txRes)))
     }
@@ -129,19 +137,38 @@ const netvoteTxPost = async (path, postObj, headers) => {
   return netvoteTxRequest('POST', path, postObj, headers);
 };
 
-const getElection = async (electionId) => {
-  let db = app.firestore();
-  db.settings({ timestampsInSnapshots: true})
-  let doc = await db.collection("deployedElections").doc(electionId).get()
+const getFirebaseDoc = async (collection, id) => {
+  let db = firestore();
+  let doc = await db.collection(collection).doc(id).get()
   if(!doc.exists){
-    throw new Error("doc "+electionId+" does not exist")
+    throw new Error("doc "+id+" does not exist")
   }
   return doc.data();
+}
+
+const getBallotGroup = async (id) => {
+  return await getFirebaseDoc("ballotGroups", id)
+}
+
+const getElection = async (electionId) => {
+  return await getFirebaseDoc("deployedElections", electionId)
 }
 
 const snooze = ms => new Promise(resolve => setTimeout(resolve, ms)); 
 
 module.exports = {
+  GetBallotGroup: async(id) => {
+    return await getBallotGroup(id)
+  },
+  CreateBallotGroup: async(obj) => {
+    return await netvotePost("/admin/ballotGroup", obj)
+  },
+  CreateBallotGroupVoter: async(groupId) => {
+    return await netvoteGet("/admin/ballotGroup/"+groupId+"/voter/jwt")
+  },
+  AssignBallotGroupToElection: async(obj) => {
+    return await netvotePost("/admin/election/ballotGroupAssignment", obj)
+  },
   GetDeployedElection: async(electionId) => {
     return getElection(electionId);
   },
@@ -173,8 +200,7 @@ module.exports = {
   CloseElection: async(obj) => {
     return new Promise( async (resolve, reject) => {
       await netvoteTxPost("/admin/election/close", obj)
-      let db = app.firestore();
-      db.settings({ timestampsInSnapshots: true})
+      let db = firestore();
       let sub = db.collection('deployedElections').doc(obj.electionId).onSnapshot((doc) => {
         if(doc.exists){
           if(doc.data().resultsAvailable){
