@@ -187,6 +187,12 @@ module.exports = {
     })
     return res.token;
   },
+  GetVoterTokenForGroup: async(obj, key) => {
+    let res = await netvotePost("/vote/ballotGroup/auth", obj, {
+      Authorization: `Bearer ${key}`
+    })
+    return res.token;
+  },
   CastVote: async(obj, token) => {
     return await netvoteTxPost("/vote/cast", obj, {
       Authorization: `Bearer ${token}`

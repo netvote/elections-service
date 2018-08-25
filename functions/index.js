@@ -256,6 +256,10 @@ const ballotGroupAuthorize = async (req, res, next) => {
         sendError(res, 404, "group not found")
         return;
     }
+    if(!bg.data().active){
+        sendError(res, 409, "ballot group not active")
+        return;
+    }
     if(bg.data().orgid !== req.user.orgId){
         unauthorized(res);
         return;
@@ -608,6 +612,44 @@ const civicIdCheck = (req, res, next) => {
         });
 };
 
+const ballotGroupCheck = async (req,res,next) => {
+    try{
+        initJwt();
+        if (!req.token) {
+            unauthorized(res);
+            return;
+        }
+        if(!req.body.shortCode){
+            sendError(res, 400, "shortCode is a required parameter");
+            return;
+        }
+        
+        const key = req.token.split(".")[1]
+        const groupId = JSON.parse(new Buffer(key, "base64").toString("ascii")).scope;
+        const shortCode = req.body.shortCode;
+        const jwtSecret = await getHashKey(groupId, COLLECTION_BALLOT_GROUP_JWT_SECRET);
+
+        nJwt.verify(req.token, jwtSecret, async (err, verifiedJwt) => {
+            if (err) {
+                unauthorized(res);
+            } else {
+                let db = firestore();
+                let assignment = await db.collection(COLLECTION_BALLOT_GROUP_ASSIGNMENTS).doc(`${groupId}_${shortCode}`).get();
+                if(!assignment.exists){
+                    unauthorized(res);
+                    return;
+                }
+                req.voteId = verifiedJwt.body.sub;
+                req.electionId = assignment.data().electionId;
+                return next();
+            }
+        });
+    }catch(e){
+        console.error("error evaluating token", e);
+        unauthorized(res);
+    }  
+}
+
 const voterIdCheck = (req, res, next) => {
     let key = req.token;
     let electionId = req.body.electionId || req.body.address;
@@ -726,7 +768,7 @@ const createGroupVoterJwt = async (groupId) => {
     let sub = uuid();
     let claims = {
         sub: sub,
-        groupId: groupId,
+        scope: groupId,
         iss: "https://netvote.io"
     }
     const jwtSecret = await getJwtSecretForGroup(groupId);
@@ -1274,6 +1316,12 @@ voterApp.post('/auth', voterIdCheck, (req, res) => {
     return createVoterJwt(electionId, req.token).then((tok) => {
         res.send({ token: tok });
     })
+});
+
+voterApp.post('/ballotGroup/auth', ballotGroupCheck, async (req, res) => {
+    let tok = await createVoterJwt(req.electionId, req.voteId);
+    res.send({ token: tok });
+    return;
 });
 
 voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
