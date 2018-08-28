@@ -28,6 +28,14 @@ Array.prototype.pushArray = function (arr) {
 let crypto;
 let nJwt;
 
+const LAMBDA_ELECTION_LOOKUP_VOTE = "election-lookup-vote"
+const LAMBDA_ELECTION_CAST_VOTE = "election-cast-vote"
+const LAMBDA_ELECTION_REVEAL_KEY = "election-reveal-key"
+const LAMBDA_ELECTION_CLOSE = "election-close"
+const LAMBDA_ELECTION_ACTIVATE = "election-activate"
+const LAMBDA_ELECTION_CREATE = "election-create"
+const LAMBDA_ELECTION_TALLY = "election-tally"
+
 const COLLECTION_HASH_SECRETS = "hashSecrets";
 const COLLECTION_VOTER_IDS = "voterIds";
 const COLLECTION_VOTER_PIN_HASH_SECRET = "voterPinHashSecrets";
@@ -1220,9 +1228,8 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
             version: deployedElection.version,
             callback: collection + "/" + ref.id
         }
-        let lambdaName = (deployedElection.network === "netvote") ? 'private-activate-election'  : 'netvote-activate-election';
         try{
-            await asyncInvokeLambda(lambdaName, payload);
+            await asyncInvokeLambda(LAMBDA_ELECTION_ACTIVATE, payload);
         } catch(e){
             handleTxError(ref, e);
         }
@@ -1259,15 +1266,13 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             callback: collection + "/" + ref.id
         }
         //close election
-        let lambdaName = (deployedElection.network === "netvote") ? 'private-close-election'  : 'netvote-close-election';
         try{
-            await asyncInvokeLambda(lambdaName, payload);
+            await asyncInvokeLambda(LAMBDA_ELECTION_CLOSE, payload);
         }catch(e){
             handleTxError(ref, error);
         }
 
         // reveal key
-        let revealLambdaName = (deployedElection.network === "netvote") ? 'private-reveal-key'  : 'netvote-reveal-key';
         let key = await getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS);
         payload = {
             key: key,
@@ -1276,7 +1281,7 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             network: deployedElection.network
         }
         try{
-            await asyncInvokeLambda(revealLambdaName, payload);
+            await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
             await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
         }catch(e){
             handleTxError(ref, e);
@@ -1338,8 +1343,7 @@ adminApp.post('/election', async (req, res) => {
             callback: COLLECTION_CREATE_ELECTION_TX + "/" + ref.id
         }
 
-        let lambdaName = (network === "netvote") ? 'private-create-election'  : 'netvote-create-election';
-        await asyncInvokeLambda(lambdaName, payload);
+        await asyncInvokeLambda(LAMBDA_ELECTION_CREATE, payload);
 
         res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
     
@@ -1418,8 +1422,7 @@ voterApp.get('/lookup/:electionId/:tx', (req, res) => {
             network: el.network
         }
 
-        let lambdaName = (el.network == "netvote") ? "private-get-vote" : "netvote-get-vote";
-        invokeLambda(lambdaName, payload, (err, data) => {
+        invokeLambda(LAMBDA_ELECTION_LOOKUP_VOTE, payload, (err, data) => {
             if(err){
                 sendError(res, 500, "lambda error: "+e.message)
             } else {
@@ -1626,9 +1629,8 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             });
 
             await markJwtStatus(req.tokenKey, "voted")
-            let lambdaName = (el.network == "netvote") ? "private-cast-vote" : "netvote-cast-vote";
             try{
-                await asyncInvokeLambda(lambdaName, {
+                await asyncInvokeLambda(LAMBDA_ELECTION_CAST_VOTE, {
                     callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
                     vote: voteObj,
                     network: el.network
@@ -1696,9 +1698,8 @@ tallyApp.get('/election/:electionId', async (req, res) => {
             status: "pending"
         });
     }).then(async (jobRef) => {
-        const lambdaName = (deployedElection.network == "netvote") ? "private-tally-election" : "netvote-tally-election";
         try{
-            await asyncInvokeLambda(lambdaName, {
+            await asyncInvokeLambda(LAMBDA_ELECTION_TALLY, {
                 callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
                 address: deployedElection.address,
                 version: deployedElection.version,

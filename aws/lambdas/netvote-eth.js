@@ -151,7 +151,7 @@ module.exports = {
         return getAbi("VoteAllowance", version)
     },
     network: () => {
-        return process.env.NETWORK || "ropsten"
+        return NETWORK.id
     },
     gatewayAddress: () => {
         return web3Provider.getAddress();

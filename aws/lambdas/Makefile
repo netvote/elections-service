@@ -9,32 +9,25 @@ mount:
 	docker run -it -v $(CURDIR):/lambda --entrypoint=/bin/bash 8base/docker-amazonlinux-node
 
 deploy_cast_vote:
-	aws lambda update-function-code --function-name netvote-cast-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-cast-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-cast-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_create_election:
-	aws lambda update-function-code --function-name netvote-create-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-create-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-create --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_activate_election:
-	aws lambda update-function-code --function-name netvote-activate-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-activate-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-activate --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_reveal_key:
-	aws lambda update-function-code --function-name netvote-reveal-key --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-reveal-key --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-reveal-key --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_close_election:
-	aws lambda update-function-code --function-name netvote-close-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-close-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-close --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_tally_election:
-	aws lambda update-function-code --function-name netvote-tally-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-tally-election --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-tally --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_get_vote:
-	aws lambda update-function-code --function-name netvote-get-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
-	aws lambda update-function-code --function-name private-get-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-lookup-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_add_observation:
 	aws lambda update-function-code --function-name private-add-observation --s3-bucket netvote-lambda-code --s3-key lambdas.zip
