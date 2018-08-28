@@ -1216,6 +1216,7 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
         let payload = {
             electionId: electionId,
             address: deployedElection.address,
+            network: deployedElection.network,
             version: deployedElection.version,
             callback: collection + "/" + ref.id
         }
@@ -1253,6 +1254,7 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
         let payload = {
             electionId: electionId,
             address: deployedElection.address,
+            network: deployedElection.network,
             version: deployedElection.version,
             callback: collection + "/" + ref.id
         }
@@ -1270,7 +1272,8 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
         payload = {
             key: key,
             electionId: electionId,
-            address: deployedElection.address
+            address: deployedElection.address,
+            network: deployedElection.network
         }
         try{
             await asyncInvokeLambda(revealLambdaName, payload);
@@ -1299,6 +1302,7 @@ adminApp.post('/election', async (req, res) => {
         return;
     }
 
+    //TODO: add mainnet
     if(network !== "ropsten" && network !== "netvote") {
         sendError(res, 400, "network must be one of: ropsten, netvote (default: ropsten)")
         return;
@@ -1320,6 +1324,7 @@ adminApp.post('/election', async (req, res) => {
 
         let payload = {
             version: version,
+            network: network,
             election: {
                 type: "basic",
                 allowUpdates: allowUpdates,
@@ -1343,39 +1348,6 @@ adminApp.post('/election', async (req, res) => {
     }
 });
 
-adminApp.post('/token/election', (req, res) => {
-    let isPublic = !!(req.body.isPublic);
-    let metadataLocation = req.body.metadataLocation;
-    let tokenAddress = req.body.tokenAddress;
-    let allowUpdates = !!(req.body.allowUpdates);
-    let autoActivate = !!(req.body.autoActivate);
-
-    if (!metadataLocation) {
-        sendError(res, 400, "metadataLocation is required");
-        return;
-    }
-
-    if (!tokenAddress) {
-        sendError(res, 400, "tokenAddress is required");
-        return;
-    }
-
-    return submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
-        type: "token",
-        tokenAddress: tokenAddress,
-        allowUpdates: allowUpdates,
-        isPublic: isPublic,
-        metadataLocation: metadataLocation,
-        autoActivate: autoActivate,
-        uid: req.user.uid
-    }).then((ref) => {
-        res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
-    });
-});
-
 // VOTER APIs
 const voterApp = express();
 voterApp.use(cors());
@@ -1390,7 +1362,7 @@ voterApp.post('/auth', voterIdCheck, (req, res) => {
 
 voterApp.post('/ballotGroup/auth', ballotGroupCheck, async (req, res) => {
     let tok = await createVoterJwt(req.electionId, req.voteId);
-    res.send({ address: req.electionId, token: tok, callback: "https://demo.firebaseapp.com/vote/scan" });
+    res.send({ address: req.electionId, token: tok, callback: "https://demo.netvote.io/vote/scan" });
     return;
 });
 
@@ -1442,7 +1414,8 @@ voterApp.get('/lookup/:electionId/:tx', (req, res) => {
         const payload = {
             address: el.address,
             txId: tx,
-            version: el.version
+            version: el.version,
+            network: el.network
         }
 
         let lambdaName = (el.network == "netvote") ? "private-get-vote" : "netvote-get-vote";
@@ -1657,7 +1630,8 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             try{
                 await asyncInvokeLambda(lambdaName, {
                     callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
-                    vote: voteObj
+                    vote: voteObj,
+                    network: el.network
                 });
             }catch(e){
                handleTxError(jobRef, e); 
@@ -1728,6 +1702,7 @@ tallyApp.get('/election/:electionId', async (req, res) => {
                 callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
                 address: deployedElection.address,
                 version: deployedElection.version,
+                network: deployedElection.network,
                 validateSignatures: deployedElection.requireProof
             })
         }catch(e){
