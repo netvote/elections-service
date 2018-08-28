@@ -14,11 +14,17 @@ let web3Provider;
 let web3;
 let web3Defaults;
 
-const initProvider = () => {
+
+
+const initProvider = async () => {
     if(!NETWORK) {
         throw new Error("network not initialized");
     }
-    web3Provider = new HDWalletProvider(NETWORK.mnemonic, NETWORK.url);
+    let secrets = new AWS.SecretsManager();
+    let secretName = "election/ethereum/mnemonic";
+    let secret = await secrets.getSecretValue({SecretId: secretName}).promise();
+    let mnemonic = JSON.parse(secret.SecretString)[NETWORK.id]
+    web3Provider = new HDWalletProvider(mnemonic, NETWORK.url);
     web3 = new Web3(web3Provider);
     web3.eth.defaultAccount = web3Provider.getAddress();
     web3Defaults = {
