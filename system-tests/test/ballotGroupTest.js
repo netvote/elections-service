@@ -37,6 +37,7 @@ const VOTE_0_0_0 = {
     ]
   }
 
+
 describe(`Ballot Groups`, function() {
 
     let groupId;
@@ -69,6 +70,7 @@ describe(`Ballot Groups`, function() {
         let bg = await nv.CreateBallotGroup(ballotGroup);
         assert.equal(bg.id != null, true, "expected id not to be null")
         groupId = bg.id;
+        console.log("GroupID: "+groupId);
     })
 
     it('should create jwt key for group', async () => {
@@ -88,7 +90,7 @@ describe(`Ballot Groups`, function() {
 
     it('should exchange voter jwt for vote jwt', async()=>{
         let token = await nv.GetVoterTokenForGroup({
-            shortCode: "abc123"
+            shortCode: "ABC123"
         }, voterToken);
 
         assert.equal(token != null, true, "expected non null token");

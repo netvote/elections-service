@@ -249,6 +249,24 @@ const validateFirebaseIdToken = async (req, res, next) => {
     });
 };
 
+const ballotGroupDemoCheck = async (req, res, next) => {
+    let db = firestore();
+    let bg = await db.collection(COLLECTION_BALLOT_GROUPS).doc(req.params.groupId).get();
+    if(!bg.exists){
+        sendError(res, 404, "group not found")
+        return;
+    }
+    if(!bg.data().active){
+        sendError(res, 409, "ballot group not active")
+        return;
+    }
+    if(!bg.data().demo){
+        unauthorized(res);
+        return;
+    }
+    return next();
+}
+
 const ballotGroupAuthorize = async (req, res, next) => {
     let db = firestore();
     let bg = await db.collection(COLLECTION_BALLOT_GROUPS).doc(req.params.groupId).get();
@@ -612,6 +630,10 @@ const civicIdCheck = (req, res, next) => {
         });
 };
 
+const getBallotGroupAssignmentKey = (groupId, shortCode) => {
+    return `${groupId}_${shortCode}`.toUpperCase();
+}
+
 const ballotGroupCheck = async (req,res,next) => {
     try{
         initJwt();
@@ -634,7 +656,8 @@ const ballotGroupCheck = async (req,res,next) => {
                 unauthorized(res);
             } else {
                 let db = firestore();
-                let assignment = await db.collection(COLLECTION_BALLOT_GROUP_ASSIGNMENTS).doc(`${groupId}_${shortCode}`).get();
+                let bgaKey = getBallotGroupAssignmentKey(groupId, shortCode);
+                let assignment = await db.collection(COLLECTION_BALLOT_GROUP_ASSIGNMENTS).doc(bgaKey).get();
                 if(!assignment.exists){
                     unauthorized(res);
                     return;
@@ -773,9 +796,20 @@ const createGroupVoterJwt = async (groupId) => {
     }
     const jwtSecret = await getJwtSecretForGroup(groupId);
     let jwt = nJwt.create(claims, jwtSecret);
-    //1 year
     jwt.setExpiration(new Date().getTime() + (24 * 365 * 60 * 60 * 1000));
+
+    let key = jwt.body.jti + jwt.body.sub;
+    await initJwtForScan(key)
+    //1 year
     return jwt.compact();
+}
+
+const initJwtForScan = async (key) => {
+    let db = firestore();
+    await db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
+        status: "pending",
+        timestamp: new Date().getTime()
+    })
 }
 
 const createWeightedVoterJwt = async (electionId, voterId, weight) => {
@@ -797,12 +831,8 @@ const createWeightedVoterJwt = async (electionId, voterId, weight) => {
     const jwtSecret = await getJwtSecretForElection(electionId);
     let jwt = nJwt.create(claims, jwtSecret);
     jwt.setExpiration(new Date().getTime() + (60 * 60 * 1000));
-    let db = firestore();
     let key = jwt.body.jti + jwt.body.sub;
-    await db.collection(COLLECTION_JWT_TRANSACTION).doc(key).set({
-        status: "pending",
-        timestamp: new Date().getTime()
-    })
+    await initJwtForScan(key)
     return jwt.compact();
 };
 
@@ -854,6 +884,26 @@ const sendQr = (txt, res) => {
         }
     });
 };
+
+
+const sendQrJson = (obj, res) => {
+    initQr();
+    return new Promise(function (resolve, reject) {
+        QRCode.toDataURL(JSON.stringify(obj), {
+            color: {
+                dark: "#0D364B",
+                light: "#ffffff"
+            }
+        }, function (err, url) {
+            res.send({
+                data: obj,
+                qr: url
+            });
+            resolve(true);
+        });
+    });
+};
+
 
 const sendQrJwt = (address, voterId, pushToken, publicEncKey, res) => {
     initQr();
@@ -963,6 +1013,19 @@ const demoApp = express();
 demoApp.use(cors());
 demoApp.use(cookieParser());
 
+
+demoApp.get('/qr/ballotGroup/:groupId/voter', ballotGroupDemoCheck, async (req, res) => {
+    initQr();
+    if (!req.params.groupId) {
+        sendError(res, 400, "groupId is required");
+        return;
+    }
+    let jwt = await createGroupVoterJwt(req.params.groupId);
+    
+    let payload = {groupId: req.params.groupId, token: jwt, callback: "https://demo.firebaseapp.com/vote/scan"};
+    return sendQrJson(payload, res);
+})
+
 demoApp.get('/qr/election/:electionId', (req, res) => {
     initQr();
     if (!req.params.electionId) {
@@ -1051,6 +1114,13 @@ adminApp.get("/ballotGroup/:groupId/voter/jwt", ballotGroupAuthorize, async(req,
     res.send({groupId: req.params.groupId, token: jwt});
 })
 
+// create a reusable voter identity JWT via QR for a ballotGroup
+adminApp.get("/ballotGroup/:groupId/voter/qr", ballotGroupAuthorize, async(req, res) => {
+    let jwt = await createGroupVoterJwt(req.params.groupId);
+    let payload = {groupId: req.params.groupId, token: jwt};
+    sendQr(JSON.stringify(payload), res);
+})
+
 adminApp.get('/apikey', async (req, res) => {
     initUuid();
     let db = firestore();
@@ -1083,7 +1153,7 @@ adminApp.post('/election/ballotGroupAssignment', electionOwnerCheck, async (req,
     let shortCode = req.body.shortCode;
 
     let db = firestore();
-    let docKey = `${groupId}_${shortCode}`;
+    let docKey = getBallotGroupAssignmentKey(groupId, shortCode);
     let d = await db.collection(COLLECTION_BALLOT_GROUP_ASSIGNMENTS).doc(docKey).get();
     if(d.exists){
         sendError(res, 400, "short code "+shortCode+" alread exists for group");
@@ -1119,7 +1189,7 @@ adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
         sendError(res, 400, "count must be between 1 and 100");
         return;
     }
-    generateKeys(req.user.uid, electionId, req.body.count).then((keys) => {
+    return generateKeys(req.user.uid, electionId, req.body.count).then((keys) => {
         res.send(keys);
     }).catch((e) => {
         console.error(e);
@@ -1320,7 +1390,7 @@ voterApp.post('/auth', voterIdCheck, (req, res) => {
 
 voterApp.post('/ballotGroup/auth', ballotGroupCheck, async (req, res) => {
     let tok = await createVoterJwt(req.electionId, req.voteId);
-    res.send({ token: tok });
+    res.send({ address: req.electionId, token: tok, callback: "https://demo.firebaseapp.com/vote/scan" });
     return;
 });
 
@@ -1329,6 +1399,12 @@ voterApp.post('/civic/auth', civicIdCheck, (req, res) => {
     return createVoterJwt(electionId, req.token).then((tok) => {
         res.send({ token: tok });
     })
+});
+
+// returns QR
+voterApp.post('/qr/shortcode', ballotGroupCheck, async (req, res) => {
+    let tok = await createVoterJwt(req.electionId, req.voteId);
+    return sendQrJwt(req.electionId, tok, req.pushToken, req.publicEncKey, res);
 });
 
 // returns QR
@@ -1455,10 +1531,19 @@ let asyncInvokeLambda = (name, payload) => {
 //     });
 // });
 
-voterApp.post('/scan', voterTokenCheck, (req, res) => {
-    markJwtStatus(req.tokenKey, "scanned").then(() => {
-        res.send({ status: "ok" });
-    });
+voterApp.post('/scan', async (req, res) => {
+    initJwt();
+    if (!req.token) {
+        unauthorized(res);
+        return;
+    }
+    const jwtObj = req.token.split(".")[1]
+    const jwt = JSON.parse(new Buffer(jwtObj, "base64").toString("ascii"));
+    const tokenKey = jwt.jti+jwt.sub;
+
+    await markJwtStatus(tokenKey, "scanned");
+    res.send({ status: "ok" });
+    return;
 });
 
 const hashVoteId = async (electionId, voter) => {

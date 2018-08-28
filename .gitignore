@@ -1,6 +1,8 @@
 node_modules
 *.iml
 .idea
+govurn-bak
 key*.json
+.firebase
 firebase-debug.log
 lambdas.zip

@@ -72,14 +72,14 @@ describe(`End to End Election`, function() {
       'autoActivate': false,
       'network': TEST_NETWORK
     },
-    {
-      'name': 'election with auto activation',
-      'isPublic' : true,
-      'metadataLocation': metadataLocation,
-      'allowUpdates': true,
-      'autoActivate': true,
-      'network': TEST_NETWORK
-    },
+    // {
+    //   'name': 'election with auto activation',
+    //   'isPublic' : true,
+    //   'metadataLocation': metadataLocation,
+    //   'allowUpdates': true,
+    //   'autoActivate': true,
+    //   'network': TEST_NETWORK
+    // },
     {
       'name': 'election with signature verification',
       'isPublic' : true,
