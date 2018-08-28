@@ -1,6 +1,5 @@
 const tally = require("@netvote/elections-tally");
-const ethUrl = process.env.ETH_URL;
-
+const networks = require("./eth-networks.js");
 
 exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
@@ -15,6 +14,7 @@ exports.handler = async (event, context, callback) => {
         let version = event.version ? event.version : 15;
         let address = event.address;
         let txId = event.txId;
+        let nv = await networks.NetvoteProvider(event.network);
 
         if(!address){
             throw new Error("must specify address in event")
@@ -26,7 +26,7 @@ exports.handler = async (event, context, callback) => {
         let result = await tally.tallyTxVote({
             electionAddress: address,
             txId: txId,
-            provider: ethUrl,
+            provider: nv.ethUrl(),
             version: version
         })
         callback(null, JSON.stringify(result))

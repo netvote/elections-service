@@ -1,10 +1,9 @@
 const firebaseUpdater = require("./firebase-updater.js");
 
-const nv = require("./netvote-eth.js");
-const nonceCounter = require("./nonce-counter.js");
+const networks = require("./eth-networks.js");
 
-const postEncryptionKey = async(addr, key, BaseElection) => {
-    const nonce = await nonceCounter.getNonce(process.env.NETWORK);
+const postEncryptionKey = async(nv, addr, key, BaseElection) => {
+    const nonce = await nv.Nonce();
     return BaseElection.at(addr).setPrivateKey(key, {nonce: nonce, from: nv.gatewayAddress()})
 };
 
@@ -15,8 +14,9 @@ exports.handler = async (event, context, callback) => {
 
     try {
         let version = event.version ? event.version : 15;
+        const nv = await networks.NetvoteProvider(event.network);
         const BaseElection = await nv.BaseElection(version);
-        const tx = await postEncryptionKey(event.address, event.key, BaseElection);
+        const tx = await postEncryptionKey(nv, event.address, event.key, BaseElection);
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             resultsAvailable: true
         });

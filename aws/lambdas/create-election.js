@@ -1,12 +1,8 @@
 const firebaseUpdater = require("./firebase-updater.js");
 const crypto = require('crypto');
 const uuid = require('uuid/v4')
-const nonceCounter = require("./nonce-counter.js");
+const networks = require("./eth-networks.js");
 
-const nv = require("./netvote-eth.js");
-const web3 = nv.web3();
-
-const ETH_NETWORK = nv.network();
 const VOTE_LIMIT = process.env.VOTE_LIMIT || "10000";
 
 const toHmac = (value, key) => {
@@ -26,12 +22,12 @@ const generateHashKey = async(collection, id) =>{
     return secret;
 }
 
-const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof) => {
+const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof, network) => {
     const status = (autoActivate) ? "voting" : "building";
 
     return firebaseUpdater.createDoc("deployedElections", electionId, {
         network: {
-            stringValue: ETH_NETWORK
+            stringValue: network
         },
         status: {
             stringValue: status
@@ -60,34 +56,41 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
     })
 }
 
-const transferVoteAllowance = async (address) => {
-    let nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    await VoteContract.transfer(address, web3.utils.toWei(VOTE_LIMIT, 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
+const transferVoteAllowance = async (nv, vc, address) => {
+    let nonce = await nv.Nonce();
+    let web3 = await nv.web3();
+    await vc.transfer(address, web3.utils.toWei(VOTE_LIMIT, 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
     console.log(`transfered ${VOTE_LIMIT} vote token to election: ${address}`)
 }
 
-const postPrivateKey = async (electionId, address, isPublic) => {
+const postPrivateKey = async (nv, electionId, address, isPublic) => {
     let encryptionKey = await generateHashKey("encryptionKeys", electionId)
     if (isPublic) {
-        let nonce = await nonceCounter.getNonce(process.env.NETWORK);
+        let nonce = await nv.Nonce();
         await BasicElection.at(address).setPrivateKey(encryptionKey, {nonce: nonce, from: nv.gatewayAddress()})
         console.log("released private key: "+address)
     }
 }
 
-const addElectionToAllowance = async(address) => {
-    let nonce = await nonceCounter.getNonce(process.env.NETWORK);
-    await VoteContract.addElection(address, {nonce: nonce, from: nv.gatewayAddress()})
+const addElectionToAllowance = async(nv, vc, address) => {
+    let nonce = await nv.Nonce();
+    await vc.addElection(address, {nonce: nonce, from: nv.gatewayAddress()})
     console.log("added address to vote contract for event subscription")
 }
 
-const createElection = async(electionId, election, version) => {
+const createElection = async(electionId, election, network, version) => {
+    let nv = await networks.NetvoteProvider(network);
+
+    let VA = await nv.Vote(version)
+    let VoteContract = await VA.deployed();
+
+    let web3 = nv.web3();
     let gatewayAddress = nv.gatewayAddress();
     version = (version) ? version : 15;
     BasicElection = await nv.BasicElection(version);
-    VoteContract = await nv.deployedVoteContract(version);
 
-    let nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    let nonce = await nv.Nonce();
+
     let el = await BasicElection.new(
         web3.utils.sha3(election.uid),
         VoteContract.address,
@@ -104,27 +107,27 @@ const createElection = async(electionId, election, version) => {
     await generateHashKey("hashSecrets", electionId)
 
     let setupTasks = []
-    setupTasks.push(transferVoteAllowance(el.address))
-    setupTasks.push(postPrivateKey(electionId, el.address, election.isPublic))
-    setupTasks.push(addElectionToAllowance(el.address));
+    setupTasks.push(transferVoteAllowance(nv, VoteContract, el.address))
+    setupTasks.push(postPrivateKey(nv, electionId, el.address, election.isPublic))
+    setupTasks.push(addElectionToAllowance(nv, VoteContract, el.address));
     
     await Promise.all(setupTasks);
 
-    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate, election.isDemo, election.requireProof);
+    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate, election.isDemo, election.requireProof, network);
     return el;
 }
 
 exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
-    context.callbackWaitsForEmptyEventLoop = false;
     if(event.ping) {
+        context.callbackWaitsForEmptyEventLoop = false;
         callback(null, "ok")
         return;
     }
     try {
         let electionId = uuid();
-        const tx = await createElection(electionId, event.election, event.version);
+        const tx = await createElection(electionId, event.election, event.network, event.version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
             electionId: electionId,
@@ -132,6 +135,7 @@ exports.handler = async (event, context, callback) => {
             address: electionId
         }, true);
         console.log("completed successfully")
+        context.callbackWaitsForEmptyEventLoop = false;
         callback(null, "ok")
     }catch(e){
         console.error("error while transacting: ", e);
@@ -139,6 +143,7 @@ exports.handler = async (event, context, callback) => {
             status: "error"
         });
         console.log("error, but dropping to avoid replay")
+        context.callbackWaitsForEmptyEventLoop = false;
         callback(null, "ok")
     }
 };

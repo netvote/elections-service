@@ -1,8 +1,8 @@
 const firebaseUpdater = require("./firebase-updater.js");
-const nonceCounter = require("./nonce-counter.js");
 // instantiate the iopipe library
 var iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
-const nv = require("./netvote-eth.js");
+const networks = require("./eth-networks.js");
+
 
 
 const votedAlready = async (addr, voteId, BasePool) => {
@@ -11,9 +11,9 @@ const votedAlready = async (addr, voteId, BasePool) => {
     return res !== '';
 };
 
-const castVote = async(voteObj, BasePool, version) => {
+const castVote = async(nv, voteObj, BasePool, version) => {
     console.log("casting vote from "+nv.gatewayAddress())
-    const nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    const nonce = await nv.Nonce();
     let tx;
     if(version > 21){
         if(voteObj.proof){
@@ -29,9 +29,9 @@ const castVote = async(voteObj, BasePool, version) => {
     return tx;
 };
 
-const updateVote = async(voteObj, BasePool, version) => {
+const updateVote = async(nv, voteObj, BasePool, version) => {
     console.log("updating vote from "+nv.gatewayAddress())
-    const nonce = await nonceCounter.getNonce(process.env.NETWORK);
+    const nonce = await nv.Nonce();
     let tx;
     if(version > 21){
         if(voteObj.proof){
@@ -52,10 +52,11 @@ exports.handler = iopipe(async (event, context, callback) => {
     context.callbackWaitsForEmptyEventLoop = false;
     try {
         let version = event.vote.version ? event.vote.version : 15;
+        let nv = await networks.NetvoteProvider(event.network);
         let BasePool = await nv.BasePool(version);
         let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
         const ethTransaction = (update) ? updateVote : castVote;
-        const tx = await ethTransaction(event.vote, BasePool, version);
+        const tx = await ethTransaction(nv, event.vote, BasePool, version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"

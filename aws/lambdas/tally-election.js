@@ -1,9 +1,8 @@
 const firebaseUpdater = require("./firebase-updater.js");
+const networks = require("./eth-networks.js");
 
 const tally = require("@netvote/elections-tally");
-const ethUrl = process.env.ETH_URL;
 const updateEveryNVotes = process.env.UPDATE_EVERY_N_VOTES ? parseInt(process.env.UPDATE_EVERY_N_VOTES) : 100;
-
 
 exports.handler = async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
@@ -17,18 +16,18 @@ exports.handler = async (event, context, callback) => {
         let version = event.version ? event.version : 15;
         let validateSignatures = !!(event.validateSignatures);
         let address = event.address;
+        let nv = await networks.NetvoteProvider(event.network);
         if(!address){
             throw new Error("must specify address in event")
         }
 
         let counter = 0;
-
         let badVotes = [];
 
         let result = await tally.tallyElection({
             electionAddress: address,
             version: version,
-            provider: ethUrl,
+            provider: nv.ethUrl(),
             validateSignatures: validateSignatures,
             resultsUpdateCallback: async (res) => {
                 counter++;
