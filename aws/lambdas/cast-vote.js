@@ -59,7 +59,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         const ethTransaction = (update) ? updateVote : castVote;
         let voteType = (update) ? "revote" : "vote"
 
-        context.iopipe.label(event.vote.address);
+        context.iopipe.label(event.electionId);
         context.iopipe.label(event.network);
         context.iopipe.label(voteType);
 
@@ -74,6 +74,6 @@ exports.handler = iopipe(async (event, context, callback) => {
         await firebaseUpdater.updateStatus(event.callback, {
             status: "error"
         });
-        callback(e, "ok")
+        callback(e, "error")
     }
 });

@@ -1295,6 +1295,7 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
     });
 });
 
+// uid must exist in a userNetworks collection with mainnet: true
 const allowedToUseMainnet = async (uid) => {
     let db = firestore();
     let user = await db.collection(COLLECTION_USER_NETWORKS).doc(uid).get();
@@ -1430,6 +1431,7 @@ voterApp.get('/lookup/:electionId/:tx', (req, res) => {
 
     return getDeployedElection(electionId).then((el) => {
         const payload = {
+            electionId: electionId,
             address: el.address,
             txId: tx,
             version: el.version,
@@ -1647,10 +1649,13 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
                 await asyncInvokeLambda(LAMBDA_ELECTION_CAST_VOTE, {
                     callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
                     vote: voteObj,
-                    network: el.network
+                    network: el.network,
+                    electionId: electionId
                 });
             }catch(e){
                handleTxError(jobRef, e); 
+               sendError(res, 500, e.message);
+               return;
             }
             res.send({ txId: jobRef.id, collection: COLLECTION_VOTE_TX });
         }catch(e){
@@ -1718,6 +1723,7 @@ tallyApp.get('/election/:electionId', async (req, res) => {
                 address: deployedElection.address,
                 version: deployedElection.version,
                 network: deployedElection.network,
+                electionId: electionId,
                 validateSignatures: deployedElection.requireProof
             })
         }catch(e){

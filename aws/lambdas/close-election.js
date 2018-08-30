@@ -18,6 +18,8 @@ exports.handler = iopipe(async (event, context, callback) => {
     try {
         let version = event.version ? event.version : 15;
         let nv = await networks.NetvoteProvider(event.network);
+        context.iopipe.label(event.electionId);
+        context.iopipe.label(event.network);
         const ElectionPhaseable = await nv.ElectionPhaseable(version);
         const tx = await closeElection(nv, event.address, ElectionPhaseable);
         console.log("closed election: "+event.address)

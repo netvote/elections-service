@@ -129,6 +129,8 @@ exports.handler = iopipe(async (event, context, callback) => {
     try {
         let electionId = uuid();
         const tx = await createElection(electionId, event.election, event.network, event.version);
+        context.iopipe.label(electionId);
+        context.iopipe.label(event.network);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
             electionId: electionId,

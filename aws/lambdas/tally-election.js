@@ -23,6 +23,9 @@ exports.handler = iopipe(async (event, context, callback) => {
 
         let counter = 0;
         let badVotes = [];
+        context.iopipe.label(event.electionId);
+        context.iopipe.label(event.network);
+        context.iopipe.label((validateSignatures) ? "signatures" : "no-signatures");
     
         let result = await tally.tallyElection({
             electionAddress: address,

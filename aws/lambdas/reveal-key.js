@@ -17,6 +17,8 @@ exports.handler = iopipe(async (event, context, callback) => {
         const nv = await networks.NetvoteProvider(event.network);
         const BaseElection = await nv.BaseElection(version);
         const tx = await postEncryptionKey(nv, event.address, event.key, BaseElection);
+        context.iopipe.label(event.electionId);
+        context.iopipe.label(event.network);
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             resultsAvailable: true
         });

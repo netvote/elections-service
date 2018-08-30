@@ -16,7 +16,8 @@ exports.handler = iopipe(async (event, context, callback) => {
         let address = event.address;
         let txId = event.txId;
         let nv = await networks.NetvoteProvider(event.network);
-
+        context.iopipe.label(event.electionId);
+        context.iopipe.label(event.network);
         if(!address){
             throw new Error("must specify address in event")
         }
