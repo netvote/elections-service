@@ -1,5 +1,5 @@
 const firebaseUpdater = require("./firebase-updater.js");
-
+const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
 
 const postEncryptionKey = async(nv, addr, key, BaseElection) => {
@@ -7,7 +7,7 @@ const postEncryptionKey = async(nv, addr, key, BaseElection) => {
     return BaseElection.at(addr).setPrivateKey(key, {nonce: nonce, from: nv.gatewayAddress()})
 };
 
-exports.handler = async (event, context, callback) => {
+exports.handler = iopipe(async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     context.callbackWaitsForEmptyEventLoop = false;
@@ -32,4 +32,4 @@ exports.handler = async (event, context, callback) => {
         });
         callback(e, "ok")
     }
-};
+});

@@ -1,5 +1,6 @@
 const firebaseUpdater = require("./firebase-updater.js");
 const crypto = require('crypto');
+const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const uuid = require('uuid/v4')
 const networks = require("./eth-networks.js");
 
@@ -117,7 +118,7 @@ const createElection = async(electionId, election, network, version) => {
     return el;
 }
 
-exports.handler = async (event, context, callback) => {
+exports.handler = iopipe(async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     if(event.ping) {
@@ -146,4 +147,4 @@ exports.handler = async (event, context, callback) => {
         context.callbackWaitsForEmptyEventLoop = false;
         callback(null, "ok")
     }
-};
+});

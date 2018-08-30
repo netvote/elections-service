@@ -1,6 +1,6 @@
 const firebaseUpdater = require("./firebase-updater.js");
 // instantiate the iopipe library
-var iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
+const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
 
 
@@ -55,7 +55,14 @@ exports.handler = iopipe(async (event, context, callback) => {
         let nv = await networks.NetvoteProvider(event.network);
         let BasePool = await nv.BasePool(version);
         let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
+
         const ethTransaction = (update) ? updateVote : castVote;
+        let voteType = (update) ? "revote" : "vote"
+
+        context.iopipe.label(event.vote.address);
+        context.iopipe.label(event.network);
+        context.iopipe.label(voteType);
+
         const tx = await ethTransaction(nv, event.vote, BasePool, version);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,

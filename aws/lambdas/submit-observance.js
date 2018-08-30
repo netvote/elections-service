@@ -1,5 +1,5 @@
 const ipfs = require("./netvote-ipfs.js")
-
+const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
 
 const submitPayloadToIPFS = async(payload) => {
@@ -13,7 +13,7 @@ const submitObservance = async(nv, scope, submitId, reference, timestamp, observ
     return await observances.addEntry(scope, submitId, reference, timestamp, {nonce: nonce, from: nv.gatewayAddress()});
 };
 
-exports.handler = async (event, context, callback) => {
+exports.handler = ipipe(async (event, context, callback) => {
     console.log("event: "+JSON.stringify(event));
     console.log("context: "+JSON.stringify(context));
     context.callbackWaitsForEmptyEventLoop = false;
@@ -55,4 +55,4 @@ exports.handler = async (event, context, callback) => {
         console.error("error while transacting: ", e);
         callback(e, "error")
     }
-};
+});
