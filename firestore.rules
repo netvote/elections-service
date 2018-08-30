@@ -8,6 +8,10 @@ service cloud.firestore {
     function sameOrg(id) {
     	return currentOrg() == path("/databases/"+database+"/documents/org/"+id);
     }
+
+    function sameUid() {
+        return request.auth.uid == resource.data.uid
+    }
   
     match /hashSecrets/{id} {
         allow read, write: if false;
@@ -26,6 +30,10 @@ service cloud.firestore {
     }
 
     match /voterIds/{id} {
+        allow read, write: if false;
+    }
+
+    match /userNetworks/{id} {
         allow read, write: if false;
     }
 
@@ -50,15 +58,21 @@ service cloud.firestore {
     }
 
     match /org/{id} {
-        allow read, write: if true;
+        allow read: if true;
+        allow create: if true;
+        allow update, delete: if false;
     }
 
     match /orguser/{id} {
-        allow read, write: if true;
+        allow read: if sameUid();
+        allow create: if sameUid();
+        allow update, delete: if false;
     }
 
     match /user/{id} {
-        allow read, write: if true;
+        allow read: if sameUid() && resource.id == request.auth.uid;
+        allow create: if sameUid() && resource.id == request.auth.uid;
+        allow update, delete: if false;
     }
 
     match /deployedElections/{id} {
