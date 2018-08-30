@@ -44,14 +44,15 @@ const toContractUrl = (name, version) => {
 
 const getAbi = async (name, version) => {
     const url = toContractUrl(name, version);
-    if(contractCache[url]) {
-        return contractCache[url]
+    let c = contractCache[url];
+    if(!c) {
+        c = contract(await rp(url, { json: true }))
+        console.log(`loaded ${name}/${version} from S3`)
     }
-    const c = contract(await rp(url, { json: true }))
+    //set every time in case config changed in dynamodb (gas price mainly)
     c.setProvider(web3Provider)
     c.defaults(web3Defaults);
     contractCache[url] = c;
-    console.log(`loaded ${name}/${version} from S3`)
     return c;
 }
 
@@ -104,7 +105,7 @@ module.exports = {
         };
         let data = await docClient.get(params).promise();
         NETWORK = data.Item;
-        initProvider();
+        await initProvider();
     },
     Nonce: () => {
         return getNonce();

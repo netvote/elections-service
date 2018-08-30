@@ -5,9 +5,10 @@ module.exports = {
         if(!networkMap[network]) {
             delete require.cache[require.resolve('./netvote-eth.js')];
             const provider = require("./netvote-eth.js")
-            await provider.Init(network);
             networkMap[network] = provider;
         }
+        // refresh with dynamodb data (in case gas price changed)
+        await networkMap[network].Init(network);
         return networkMap[network];
     }
 }

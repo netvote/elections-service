@@ -23,7 +23,7 @@ exports.handler = async (event, context, callback) => {
 
         let counter = 0;
         let badVotes = [];
-
+    
         let result = await tally.tallyElection({
             electionAddress: address,
             version: version,
@@ -47,6 +47,7 @@ exports.handler = async (event, context, callback) => {
                 }, true);
             }
         })
+    
 
         console.log("result: "+JSON.stringify(result))
 
