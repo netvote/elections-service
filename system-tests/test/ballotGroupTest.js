@@ -19,6 +19,13 @@ const expectResult = (res, candidate, votes) => {
     assert.equal(res[candidate], votes, `${candidate} should have ${votes} votes`);
 }  
 
+const TEST_NETWORK = "netvote"
+
+const snooze = (ms) => { 
+    console.log("sleeping "+ms)
+    return new Promise(resolve => setTimeout(resolve, ms)); 
+}
+  
 const VOTE_0_0_0 = {
     ballotVotes: [
       {
@@ -59,11 +66,12 @@ describe(`Ballot Groups`, function() {
             'metadataLocation': metadataLocation,
             'allowUpdates': true,
             'autoActivate': true,
-            'network': "netvote"
+            'network': TEST_NETWORK
         }
         let res = await nv.CreateElection(options);
         deployedElection = await nv.GetDeployedElection(res.electionId);
         electionId = res.electionId;
+        console.log("ElectionID: "+electionId);
     });
 
     it('should create ballot group', async () => {
@@ -104,6 +112,9 @@ describe(`Ballot Groups`, function() {
     })
 
     it('should tally election correctly', async()=>{
+        if(TEST_NETWORK === "mainnet"){
+            await snooze(30000)
+        }
         const result = await nv.TallyElection(electionId);
         const ballotTotal = result.ballots[deployedElection.address].totalVotes;
         assert.equal(ballotTotal, 1, "expected 1 vote");

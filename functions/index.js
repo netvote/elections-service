@@ -53,6 +53,7 @@ const COLLECTION_ELECTION_JWT_KEYS = "electionJwtKeys";
 const COLLECTION_BALLOT_GROUPS = "ballotGroups";
 const COLLECTION_BALLOT_GROUP_JWT_SECRET = "ballotGroupsJwtSecret";
 const COLLECTION_BALLOT_GROUP_ASSIGNMENTS = "ballotGroupAssignments";
+const COLLECTION_USER_NETWORKS = "userNetworks";
 
 const ENCRYPT_ALGORITHM = "aes-256-cbc";
 
@@ -1294,6 +1295,12 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
     });
 });
 
+const allowedToUseMainnet = async (uid) => {
+    let db = firestore();
+    let user = await db.collection(COLLECTION_USER_NETWORKS).doc(uid).get();
+    return user.exists && user.data().mainnet;
+}
+
 adminApp.post('/election', async (req, res) => {
     let isPublic = !!(req.body.isPublic);
     let network = req.body.network || "ropsten";
@@ -1307,10 +1314,17 @@ adminApp.post('/election', async (req, res) => {
         return;
     }
 
-    //TODO: add mainnet
-    if(network !== "ropsten" && network !== "netvote") {
+    if(network !== "ropsten" && network !== "netvote" && network !== "mainnet") {
         sendError(res, 400, "network must be one of: ropsten, netvote (default: ropsten)")
         return;
+    }
+
+    if(network === "mainnet"){
+        const allowed = await allowedToUseMainnet(req.user.uid);
+        if(!allowed){
+            sendError(res, 403, "user is not allowed to use mainnet");
+            return;
+        }
     }
 
     let version = await latestContractVersion(network);
