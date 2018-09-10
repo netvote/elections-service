@@ -176,12 +176,12 @@ const forbidden = (res) => {
     sendError(res, 403, "Forbidden");
 };
 
-const handleTxError = (ref, e) => {
+const handleTxError = async (ref, e) => {
     console.error(e);
     if (e === "duplicate") {
         return true;
     }
-    return ref.set({
+    await ref.set({
         status: "error",
         error: e.message
     }, { merge: true });
@@ -1232,7 +1232,7 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
         try{
             await asyncInvokeLambda(LAMBDA_ELECTION_ACTIVATE, payload);
         } catch(e){
-            handleTxError(ref, e);
+            await handleTxError(ref, e);
         }
 
         res.send({ txId: ref.id, collection: collection });
@@ -1270,7 +1270,7 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
         try{
             await asyncInvokeLambda(LAMBDA_ELECTION_CLOSE, payload);
         }catch(e){
-            handleTxError(ref, error);
+            await handleTxError(ref, e);
         }
 
         // reveal key
@@ -1285,7 +1285,7 @@ adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
             await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
             await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
         }catch(e){
-            handleTxError(ref, e);
+            await handleTxError(ref, e);
         }
     
         res.send({ txId: ref.id, collection: collection });
@@ -1363,8 +1363,9 @@ adminApp.post('/election', async (req, res) => {
         res.send({ txId: ref.id, collection: COLLECTION_CREATE_ELECTION_TX });
     
     } catch(e) {
-        handleTxError(ref, e);
+        await handleTxError(ref, e);
     }
+    return;
 });
 
 // VOTER APIs
@@ -1653,7 +1654,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
                     electionId: electionId
                 });
             }catch(e){
-               handleTxError(jobRef, e); 
+               await handleTxError(jobRef, e); 
                sendError(res, 500, e.message);
                return;
             }
@@ -1727,7 +1728,7 @@ tallyApp.get('/election/:electionId', async (req, res) => {
                 validateSignatures: deployedElection.requireProof
             })
         }catch(e){
-            handleTxError(jobRef, e)
+            await handleTxError(jobRef, e)
         }
         res.send({ txId: jobRef.id, collection: COLLECTION_TALLY_TX });
     })   
