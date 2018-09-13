@@ -181,6 +181,9 @@ module.exports = {
   GenerateVoterKeys: async(obj) => {
     return await netvotePost("/admin/election/keys", obj)
   },
+  UploadVoterKeys: async(obj) => {
+    return await netvotePost("/admin/election/keys/upload", obj)
+  },
   GetVoterToken: async(obj, key) => {
     let res = await netvotePost("/vote/auth", obj, {
       Authorization: `Bearer ${key}`

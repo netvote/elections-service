@@ -1188,7 +1188,32 @@ adminApp.post('/election/ballotGroupAssignment', electionOwnerCheck, async (req,
     return;
 });
 
-adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
+adminApp.post('/election/keys/upload', electionOwnerCheck, async (req, res) => {
+    let electionId = req.body.electionId;
+    let keys = req.body.keys;
+    let now = new Date().getTime();
+
+    if (!electionId || !keys) {
+        sendError(res, 400, "keys & electionId are required");
+        return;
+    }
+    
+    let db = firestore();
+    let batch = db.batch();
+
+    for (let i = 0; i < keys.length; i++) {
+        const hmacHex = calculateRegKey(electionId, keys[i]);
+        let ref = await db.collection(COLLECTION_VOTER_IDS).doc(hmacHex);
+        batch.set(ref, { createdBy: req.user.uid, pool: electionId, createdAt: now });
+    }
+
+    await batch.commit();
+    
+    res.send({"status":"ok","count": keys.length});
+    return;
+});
+
+adminApp.post('/election/keys', electionOwnerCheck, async (req, res) => {
     let electionId = req.body.electionId || req.body.address;
     if (!electionId || !req.body.count) {
         sendError(res, 400, "count & electionId are required");
@@ -1198,12 +1223,9 @@ adminApp.post('/election/keys', electionOwnerCheck, (req, res) => {
         sendError(res, 400, "count must be between 1 and 100");
         return;
     }
-    return generateKeys(req.user.uid, electionId, req.body.count).then((keys) => {
-        res.send(keys);
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
-    });
+    let keys = await generateKeys(req.user.uid, electionId, req.body.count);
+    res.send(keys);
+    return;
 });
 
 adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {

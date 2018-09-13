@@ -124,9 +124,18 @@ describe(`End to End Election`, function() {
       it('should generate voter keys', async()=>{
         keys = await nv.GenerateVoterKeys({
           electionId: electionId,
-          count: 3
+          count: 2
         });
-        assert.equal(keys.length, 3)
+        assert.equal(keys.length, 2)
+      })
+
+      it('should upload voter key', async()=>{
+        let response = await nv.UploadVoterKeys({
+          electionId: electionId,
+          keys: ["test123"]
+        });
+        assert.equal(response.count, 1)
+        keys.push("test123");
       })
 
       it('should get three voter tokens', async()=>{
