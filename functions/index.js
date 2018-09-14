@@ -14,8 +14,12 @@ admin.firestore().settings({timestampsInSnapshots: true})
 
 process.env.AWS_ACCESS_KEY_ID = functions.config().netvote.secret.awsaccesskey;
 process.env.AWS_SECRET_ACCESS_KEY = functions.config().netvote.secret.awssecretkey;
+
+const ENCRYPT_KEY_ARN = functions.config().netvote.secret.encryptkeyarn;
+
 const AWS = require('aws-sdk');
 AWS.config.update({ region: 'us-east-1' });
+const kmsClient = new AWS.KMS();
 
 const cookieParser = require('cookie-parser');
 const express = require('express');
@@ -532,24 +536,39 @@ const isDemoElection = (electionId) => {
     })
 }
 
-const getHashKey = (electionId, collection) => {
+const kmsEncrypt = async (ctx, plaintext) => {
+    const params = { EncryptionContext:ctx, KeyId: ENCRYPT_KEY_ARN, Plaintext: plaintext };
+    const result = await kmsClient.encrypt(params).promise()
+    return result.CiphertextBlob.toString("base64");
+}
+
+const kmsDecrypt = async (ctx, encryptedString) => {
+    const cipherText = Buffer.from(encryptedString, "base64");
+    const params = { EncryptionContext:ctx, CiphertextBlob: cipherText };
+    const result = await kmsClient.decrypt(params).promise();
+    return result.Plaintext.toString();
+}
+
+const getHashKey = async (electionId, collection) => {
     initUuid();
-    return new Promise(function (resolve, reject) {
-        let db = firestore();
-        const electionHmac = toHmac(electionId, storageHashSecret);
-        db.collection(collection).doc(electionHmac).get().then((doc) => {
-            if (doc.exists) {
-                resolve(doc.data().secret);
-            } else {
-                const secret = uuid();
-                db.collection(collection).doc(electionHmac).set({
-                    secret: secret
-                }).then(() => {
-                    resolve(secret);
-                })
-            }
+    let db = firestore();
+    const electionHmac = toHmac(electionId, storageHashSecret);
+    let doc = await db.collection(collection).doc(electionHmac).get();
+    const encryptionCtx = {"id": electionId,"type": collection}
+    if (doc.exists) {
+        if(doc.data().encrypted){
+            return await kmsDecrypt(encryptionCtx, doc.data().secret)
+        }
+        return doc.data().secret
+    } else {
+        const secret = uuid();
+        let encrypted = await kmsEncrypt(encryptionCtx, secret);
+        await db.collection(collection).doc(electionHmac).set({
+            secret: encrypted,
+            encrypted: true //always encrypted now
         })
-    });
+        return secret;
+    }
 }
 
 const generateKeys = (uid, electionId, count) => {

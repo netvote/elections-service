@@ -1,3 +1,6 @@
+const AWS = require("aws-sdk");
+const kmsClient = new AWS.KMS();
+
 const firebaseUpdater = require("./firebase-updater.js");
 const crypto = require('crypto');
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
@@ -5,6 +8,7 @@ const uuid = require('uuid/v4')
 const networks = require("./eth-networks.js");
 
 const VOTE_LIMIT = process.env.VOTE_LIMIT || "10000";
+const ENCRYPT_KEY_ARN = "arn:aws:kms:us-east-1:891335278704:key/994f296e-ce2c-4f2b-8cef-48d16644af09";
 
 const toHmac = (value, key) => {
     const hmac = crypto.createHmac('sha256', key);
@@ -14,13 +18,24 @@ const toHmac = (value, key) => {
 
 const generateHashKey = async(collection, id) =>{
     let secret = uuid();
+    const encryptionCtx = {"id": id,"type": collection}
+    let encrypted = await kmsEncrypt(encryptionCtx, secret);
     let key = toHmac(id, process.env.STORAGE_HASH_SECRET);
     await firebaseUpdater.createDoc(collection, key, {
         secret: {
-            stringValue: secret
+            stringValue: encrypted
+        },
+        encrypted: {
+            booleanValue: true
         }
     })
     return secret;
+}
+
+const kmsEncrypt = async (ctx, plaintext) => {
+    const params = { EncryptionContext:ctx, KeyId: ENCRYPT_KEY_ARN, Plaintext: plaintext };
+    const result = await kmsClient.encrypt(params).promise()
+    return result.CiphertextBlob.toString("base64");
 }
 
 const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof, network) => {
