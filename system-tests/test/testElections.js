@@ -66,9 +66,10 @@ describe(`End to End Election`, function() {
   let scenarios = [
     {
       'name': 'election with manual activation',
-      'isPublic' : false,
+      'isPublic' : true,
       'metadataLocation': metadataLocation,
       'allowUpdates': true,
+      'closeAfter': new Date().getTime(),
       'autoActivate': false,
       'network': TEST_NETWORK
     },
@@ -77,6 +78,7 @@ describe(`End to End Election`, function() {
       'isPublic' : true,
       'metadataLocation': metadataLocation,
       'allowUpdates': true,
+      'closeAfter': 2*(new Date().getTime()),
       'autoActivate': true,
       'network': TEST_NETWORK
     },
@@ -86,6 +88,7 @@ describe(`End to End Election`, function() {
       'requireProof': true,
       'metadataLocation': metadataLocation,
       'allowUpdates': true,
+      'closeAfter': new Date().getTime(),
       'autoActivate': true,
       'network': TEST_NETWORK
     },

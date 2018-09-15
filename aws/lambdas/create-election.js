@@ -38,7 +38,7 @@ const kmsEncrypt = async (ctx, plaintext) => {
     return result.CiphertextBlob.toString("base64");
 }
 
-const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof, network) => {
+const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof, closeAfter, network) => {
     const status = (autoActivate) ? "voting" : "building";
 
     return firebaseUpdater.createDoc("deployedElections", electionId, {
@@ -68,6 +68,9 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
         },
         demo: {
             booleanValue: isDemo
+        },
+        closeAfter: {
+            integerValue: `${closeAfter}`
         }
     })
 }
@@ -129,7 +132,7 @@ const createElection = async(electionId, election, network, version) => {
     
     await Promise.all(setupTasks);
 
-    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate, election.isDemo, election.requireProof, network);
+    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate, election.isDemo, election.requireProof, election.closeAfter, network);
     return el;
 }
 

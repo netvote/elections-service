@@ -1283,57 +1283,52 @@ adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
     });
 });
 
-adminApp.post('/election/close', electionOwnerCheck, (req, res) => {
+adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
     let electionId = req.body.electionId || req.body.address;
     if (!electionId) {
         sendError(res, 400, "electionId is required");
         return;
     }
-    let deployedElection;
     let collection = COLLECTION_CLOSE_ELECTION_TX;
     
-    return getDeployedElection(electionId).then((el) => { 
-        deployedElection = el;
-        return submitEthTransaction(collection, {
-            status: 'pending',
-            address: deployedElection.address,
-            electionId: electionId
-        })
-    }).then(async (ref) => {
-        let payload = {
-            electionId: electionId,
-            address: deployedElection.address,
-            network: deployedElection.network,
-            version: deployedElection.version,
-            callback: collection + "/" + ref.id
-        }
-        //close election
-        try{
-            await asyncInvokeLambda(LAMBDA_ELECTION_CLOSE, payload);
-        }catch(e){
-            await handleTxError(ref, e);
-        }
+    let el = await getDeployedElection(electionId);
 
-        // reveal key
-        let key = await getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS);
-        payload = {
-            key: key,
-            electionId: electionId,
-            address: deployedElection.address,
-            network: deployedElection.network
+    if(el.closeAfter){
+        let now = new Date().getTime();
+        if(now < el.closeAfter){
+            sendError(res, 409, `time (${now}) must be after ${el.closeAfter} to close`);
+            return;
         }
-        try{
-            await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
-            await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
-        }catch(e){
-            await handleTxError(ref, e);
-        }
-    
-        res.send({ txId: ref.id, collection: collection });
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
+    }
+
+    let ref = await submitEthTransaction(collection, {
+        status: 'pending',
+        address: el.address,
+        electionId: electionId
     });
+
+    let payload = {
+        electionId: electionId,
+        address: el.address,
+        network: el.network,
+        version: el.version,
+        callback: collection + "/" + ref.id
+    }
+    //close election
+    await asyncInvokeLambda(LAMBDA_ELECTION_CLOSE, payload);
+
+    let key = await getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS);
+    payload = {
+        key: key,
+        electionId: electionId,
+        address: el.address,
+        network: el.network
+    }
+    await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
+    await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
+    
+    res.send({ txId: ref.id, collection: collection });
+    return;
 });
 
 // uid must exist in a userNetworks collection with mainnet: true
@@ -1350,6 +1345,7 @@ adminApp.post('/election', async (req, res) => {
     let allowUpdates = !!(req.body.allowUpdates);
     let autoActivate = !!(req.body.autoActivate);
     let requireProof = !!(req.body.requireProof);
+    let closeAfter = req.body.closeAfter || 0;
 
     if (!metadataLocation) {
         sendError(res, 400, "metadataLocation is required");
@@ -1391,6 +1387,7 @@ adminApp.post('/election', async (req, res) => {
                 allowUpdates: allowUpdates,
                 isPublic: isPublic,
                 requireProof: requireProof,
+                closeAfter: closeAfter,
                 metadataLocation: metadataLocation,
                 autoActivate: autoActivate,
                 isDemo: true, //TODO: make dynamic - for demos, anyone can vote on any election
