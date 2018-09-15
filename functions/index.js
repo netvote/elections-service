@@ -32,6 +32,7 @@ Array.prototype.pushArray = function (arr) {
 let crypto;
 let nJwt;
 
+const LAMBDA_ELECTION_ADD_AUTHID = "election-add-authid"
 const LAMBDA_ELECTION_LOOKUP_VOTE = "election-lookup-vote"
 const LAMBDA_ELECTION_CAST_VOTE = "election-cast-vote"
 const LAMBDA_ELECTION_REVEAL_KEY = "election-reveal-key"
@@ -601,6 +602,12 @@ const calculateRegKey = (electionId, key) => {
 const hmacVoterId = (voterId) => {
     return toHmac(voterId, voterIdHmacSecret);
 };
+
+const sha256 = (value) => {
+    initCrypto();
+    return crypto.createHash("sha256").update(value).digest("base64");
+};
+
 
 const toHmac = (value, key) => {
     initCrypto();
@@ -1411,8 +1418,22 @@ const voterApp = express();
 voterApp.use(cors());
 voterApp.use(authHeaderDecorator);
 
-voterApp.post('/auth', voterIdCheck, (req, res) => {
+voterApp.post('/auth', voterIdCheck, async (req, res) => {
     let electionId = req.body.electionId || req.body.address;
+    let el = await getDeployedElection(electionId);
+
+    if(el.version > 23) {
+        const hashedToken = sha256(req.token);
+        const params = {
+            electionId: electionId,
+            address: el.address,
+            network: el.network,
+            authId: hashedToken,
+            version: el.version
+        }
+        await asyncInvokeLambda(LAMBDA_ELECTION_ADD_AUTHID, params);
+    }
+
     return createVoterJwt(electionId, req.token).then((tok) => {
         res.send({ token: tok });
     })
