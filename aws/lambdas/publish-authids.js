@@ -66,7 +66,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         // shuffle ordering for anonymnity
         shuffle(authIds);
 
-        // batch send in chunks of 100
+        // batch send in chunks of 20
         let chunks = authIds.chunk(20);
         let tasks = [];
         chunks.forEach(async (authIds) => {
