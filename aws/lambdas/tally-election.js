@@ -5,8 +5,7 @@ const tally = require("@netvote/elections-tally");
 const updateEveryNVotes = process.env.UPDATE_EVERY_N_VOTES ? parseInt(process.env.UPDATE_EVERY_N_VOTES) : 100;
 
 exports.handler = iopipe(async (event, context, callback) => {
-    console.log("event: "+JSON.stringify(event));
-    console.log("context: "+JSON.stringify(context));
+    console.log(event);
     context.callbackWaitsForEmptyEventLoop = false;
     if(event.ping) {
         callback(null, "ok")

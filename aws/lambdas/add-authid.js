@@ -3,8 +3,7 @@ const AWS = require("aws-sdk");
 const docClient = new AWS.DynamoDB.DocumentClient()
 
 exports.handler = iopipe(async (event, context, callback) => {
-    console.log("event: "+JSON.stringify(event));
-    console.log("context: "+JSON.stringify(context));
+    console.log(event);
     context.callbackWaitsForEmptyEventLoop = false;
     if(event.ping) {
         callback(null, "ok")

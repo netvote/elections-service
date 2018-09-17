@@ -137,8 +137,7 @@ const createElection = async(electionId, election, network, version) => {
 }
 
 exports.handler = iopipe(async (event, context, callback) => {
-    console.log("event: "+JSON.stringify(event));
-    console.log("context: "+JSON.stringify(context));
+    console.log(event);
     if(event.ping) {
         context.callbackWaitsForEmptyEventLoop = false;
         callback(null, "ok")

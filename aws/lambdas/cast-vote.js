@@ -47,8 +47,7 @@ const updateVote = async(nv, voteObj, BasePool, version) => {
 };
 
 exports.handler = iopipe(async (event, context, callback) => {
-    console.log("event: "+JSON.stringify(event));
-    console.log("context: "+JSON.stringify(context));
+    console.log(event);
     context.callbackWaitsForEmptyEventLoop = false;
     try {
         let version = event.vote.version ? event.vote.version : 15;
