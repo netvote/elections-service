@@ -61,8 +61,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         // retrieve and sha3 each to bytes32
         let authIds = [];
         data.Items.forEach(function(item) {
-            let authId = nv.web3().utils.sha3(item.authId)
-            authIds.push(authId);
+            authIds.push(item.authId);
         });
 
         // shuffle ordering for anonymnity
@@ -70,6 +69,7 @@ exports.handler = iopipe(async (event, context, callback) => {
 
         let payload = {
             "ids": authIds,
+            "count": authIds.length,
             "description": "each ID represents web3.utils.sha3(sha256(guid)) for each unique guid"
         }
 
