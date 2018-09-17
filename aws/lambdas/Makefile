@@ -10,6 +10,7 @@ mount:
 
 deploy_add_authid:
 	aws lambda update-function-code --function-name election-add-authid --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-publish-authids --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_cast_vote:
 	aws lambda update-function-code --function-name election-cast-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip

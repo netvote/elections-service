@@ -33,6 +33,7 @@ let crypto;
 let nJwt;
 
 const LAMBDA_ELECTION_ADD_AUTHID = "election-add-authid"
+const LAMBDA_ELECTION_PUBLISH_AUTHIDS = "election-publish-authids"
 const LAMBDA_ELECTION_LOOKUP_VOTE = "election-lookup-vote"
 const LAMBDA_ELECTION_CAST_VOTE = "election-cast-vote"
 const LAMBDA_ELECTION_REVEAL_KEY = "election-reveal-key"
@@ -1329,9 +1330,21 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
         key: key,
         electionId: electionId,
         address: el.address,
-        network: el.network
+        network: el.network,
+        version: el.version
     }
     await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
+
+    if(el.version > 23) {
+        let authIdParams = {
+            electionId: electionId,
+            address: el.address,
+            network: el.network,
+            version: el.version
+        }
+        await asyncInvokeLambda(LAMBDA_ELECTION_PUBLISH_AUTHIDS, authIdParams);
+    }
+
     await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
     
     res.send({ txId: ref.id, collection: collection });
@@ -1426,8 +1439,6 @@ voterApp.post('/auth', voterIdCheck, async (req, res) => {
         const hashedToken = sha256(req.token);
         const params = {
             electionId: electionId,
-            address: el.address,
-            network: el.network,
             authId: hashedToken,
             version: el.version
         }
