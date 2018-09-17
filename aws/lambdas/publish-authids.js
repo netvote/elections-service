@@ -70,7 +70,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         let payload = {
             "ids": authIds,
             "count": authIds.length,
-            "description": "each ID represents web3.utils.sha3(sha256(guid)) for each unique guid"
+            "encoding": "sha256"
         }
 
         let hash = await ipfs.putItem(JSON.stringify(payload));
