@@ -1,6 +1,8 @@
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
 const AWS = require("aws-sdk");
+const ipfs = require("./netvote-ipfs.js")
+
 const docClient = new AWS.DynamoDB.DocumentClient()
 
 Object.defineProperty(Array.prototype, 'chunk', {
@@ -33,7 +35,7 @@ exports.handler = iopipe(async (event, context, callback) => {
     }
     try {
         const version = event.version || 0;
-        if(version < 26) {
+        if(version < 27) {
             callback(null, "skipping due to version")
             return;
         }
@@ -59,27 +61,23 @@ exports.handler = iopipe(async (event, context, callback) => {
         // retrieve and sha3 each to bytes32
         let authIds = [];
         data.Items.forEach(function(item) {
-            let authId = nv.web3().utils.sha3(item.authId+i)
+            let authId = nv.web3().utils.sha3(item.authId)
             authIds.push(authId);
         });
 
         // shuffle ordering for anonymnity
         shuffle(authIds);
 
-        // batch send in chunks of 20
-        let chunks = authIds.chunk(20);
-        let tasks = [];
-        chunks.forEach(async (authIds) => {
-            let p = new Promise(async (resolve, reject) => {
-                const nonce = await nv.Nonce();
-                await BasePool.at(event.address).addAuthIds(authIds, {nonce: nonce, from: nv.gatewayAddress()});
-                resolve(true);
-            })
-            tasks.push(p);
-        })
+        let payload = {
+            "ids": authIds,
+            "description": "each ID represents web3.utils.sha3(sha256(guid)) for each unique guid"
+        }
 
-        await Promise.all(tasks);
-        console.log({electionId: event.electionId, address: event.address, count: authIds.length });
+        let hash = await ipfs.putItem(JSON.stringify(payload));
+        const nonce = await nv.Nonce();
+        await BasePool.at(event.address).setAuthIdRef(hash, {nonce: nonce, from: nv.gatewayAddress()});
+           
+        console.log({electionId: event.electionId, address: event.address, count: authIds.length, hash: hash });
         callback(null, "ok")
     }catch(e){
         callback(e, "error occured")
