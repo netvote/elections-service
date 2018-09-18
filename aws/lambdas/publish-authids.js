@@ -2,6 +2,7 @@ const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
 const AWS = require("aws-sdk");
 const ipfs = require("./netvote-ipfs.js")
+const firebaseUpdater = require("./firebase-updater.js");
 
 const docClient = new AWS.DynamoDB.DocumentClient()
 
@@ -75,6 +76,10 @@ exports.handler = iopipe(async (event, context, callback) => {
         let hash = await ipfs.putItem(JSON.stringify(payload));
         const nonce = await nv.Nonce();
         await BasePool.at(event.address).setAuthIdRef(hash, {nonce: nonce, from: nv.gatewayAddress()});
+
+        await firebaseUpdater.updateDeployedElection(event.electionId, {
+            authIdReference: hash,
+        });
            
         console.log({electionId: event.electionId, address: event.address, count: authIds.length, hash: hash });
         callback(null, "ok")

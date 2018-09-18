@@ -248,7 +248,8 @@ const validateFirebaseIdToken = async (req, res, next) => {
         let orgId = await getOrgId(keyUser);
         req.user = {
             uid: keyUser,
-            orgId: orgId
+            orgId: orgId,
+            api: true
         }
         return next();
     }
@@ -482,7 +483,7 @@ const validateVote = async (vote, metadataLocation, requireProof) => {
 };
 
 const electionOwnerCheck = (req, res, next) => {
-    let electionId = req.body.electionId || req.body.address;
+    let electionId = req.body.electionId || req.body.address || req.params.electionId;
     uidAuthorized(req.user.uid, electionId).then((match) => {
         if (match) {
             return next();
@@ -898,6 +899,11 @@ const getDeployedElection = (address) => {
     })
 }
 
+const updateDeployedElection = async (address, obj) => {
+    let db = firestore();
+    return await db.collection(COLLECTION_DEPLOYED_ELECTIONS).doc(address).set(obj,{merge:true})
+}
+
 const latestContractVersion = (network) => {
     let db = firestore();
     return db.collection(COLLECTION_NETWORK).doc(network).get().then((doc) => {
@@ -1255,40 +1261,134 @@ adminApp.post('/election/keys', electionOwnerCheck, async (req, res) => {
     return;
 });
 
-adminApp.post('/election/activate', electionOwnerCheck, (req, res) => {
+adminApp.post('/election/activate', electionOwnerCheck, async (req, res) => {
+    try{
+        let electionId = req.body.electionId || req.body.address;
+        if (!electionId) {
+            sendError(res, 400, "electionId is required");
+            return;
+        }
+
+        let el = await getDeployedElection(electionId);
+
+        if(el.status !== "building"){
+            let message = "Election must be in a 'building' state to be activated. state="+el.status;
+            sendError(res, 409, message);
+            return;
+        }
+
+        let collection = COLLECTION_ACTIVATE_ELECTION_TX;
+        let ref = await submitEthTransaction(collection, {
+            status: 'pending',
+            address: el.address,
+            electionId: electionId
+        });
+
+        let payload = {
+            electionId: electionId,
+            address: el.address,
+            network: el.network,
+            version: el.version,
+            callback: collection + "/" + ref.id
+        }
+
+        try{
+            await asyncInvokeLambda(LAMBDA_ELECTION_ACTIVATE, payload);
+            res.send({ txId: ref.id, collection: collection });
+        } catch(e){
+            await handleTxError(ref, e);
+            return;
+        }
+
+    } catch(e){
+        console.error(e);
+        sendError(res, 500, e.message);
+        return;
+    }
+});
+
+const getPendingVoteTransactions = async (electionId) => {
+    let db = firestore();
+    let snap = await db.collection(COLLECTION_VOTE_TX).where("electionId", "==", electionId).where("status", "==", "pending").get();    
+    let transactions = []
+
+    let count = 0;
+    snap.forEach( (doc) => {
+        count++;
+        transactions.push({id:doc.id, status: doc.data().status, timestamp: doc.data().timestamp})
+    });
+    return {count: count, transactions: transactions};
+}
+
+const getVoteTransactions = async (electionId) => {
+    let db = firestore();
+    let snap = await db.collection(COLLECTION_VOTE_TX).where("electionId", "==", electionId).get();    
+    let transactions = []
+
+    let statusCounters = {}
+    snap.forEach( (doc) => {
+        if(!statusCounters[doc.data().status]){
+            statusCounters[doc.data().status] = 0;
+        }
+        statusCounters[doc.data().status]++;
+        transactions.push({id:doc.id, status: doc.data().status, timestamp: doc.data().timestamp})
+    });
+    return {stats: statusCounters, transactions: transactions};
+}
+
+adminApp.get('/election/:electionId/vote/transactions', electionOwnerCheck, async (req, res) => {
+    let electionId = req.params.electionId;
+    let voteTransactions = await getVoteTransactions(electionId);
+    res.send(voteTransactions)
+    return;
+})
+
+adminApp.post('/election/start', electionOwnerCheck, async (req, res) => {
     let electionId = req.body.electionId || req.body.address;
     if (!electionId) {
         sendError(res, 400, "electionId is required");
         return;
     }
-    let deployedElection;
-    let collection = COLLECTION_ACTIVATE_ELECTION_TX;
-    return getDeployedElection(electionId).then((el) => { 
-        deployedElection = el;
-        return submitEthTransaction(collection, {
-            status: 'pending',
-            address: el.address,
-            electionId: electionId
-        })
-    }).then(async (ref) => {
-        let payload = {
-            electionId: electionId,
-            address: deployedElection.address,
-            network: deployedElection.network,
-            version: deployedElection.version,
-            callback: collection + "/" + ref.id
-        }
-        try{
-            await asyncInvokeLambda(LAMBDA_ELECTION_ACTIVATE, payload);
-        } catch(e){
-            await handleTxError(ref, e);
-        }
 
-        res.send({ txId: ref.id, collection: collection });
-    }).catch((e) => {
-        console.error(e);
-        sendError(res, 500, e.message);
-    });
+    let el = await getDeployedElection(electionId);
+    if(el.status !== "voting"){
+        let message = "Election must be in a 'voting' state to be closed. ";
+        if(el.status === "building"){
+            message += "Activate the election first.";
+        } else if(el.status === "closed"){
+            message += "The election is closed.";
+        }
+        sendError(res, 409, message);
+        return;
+    }
+
+    await updateDeployedElection(electionId, {stopped: false});
+    res.send({ status: "ok" });
+    return;
+});
+
+adminApp.post('/election/stop', electionOwnerCheck, async (req, res) => {
+    let electionId = req.body.electionId || req.body.address;
+    if (!electionId) {
+        sendError(res, 400, "electionId is required");
+        return;
+    }
+
+    let el = await getDeployedElection(electionId);
+    if(el.status !== "voting"){
+        let message = "Election must be in a 'voting' state to be closed. ";
+        if(el.status === "building"){
+            message += "Activate the election first.";
+        } else if(el.status === "closed"){
+            message += "The election is closed.";
+        }
+        sendError(res, 409, message);
+        return;
+    }
+
+    await updateDeployedElection(electionId, {stopped: true});
+    res.send({ status: "ok" });
+    return;
 });
 
 adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
@@ -1301,10 +1401,29 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
     
     let el = await getDeployedElection(electionId);
 
+    if(el.status !== "voting"){
+        let message = "Election must be in a 'voting' state to be closed. ";
+        if(el.status === "building"){
+            message += "Activate the election first.";
+        } else if(el.status === "closed"){
+            message += "The election is closed already.";
+        }
+        sendError(res, 409, message);
+        return;
+    }
+
     if(el.closeAfter){
         let now = new Date().getTime();
         if(now < el.closeAfter){
             sendError(res, 409, `time (${now}) must be after ${el.closeAfter} to close`);
+            return;
+        }
+    }
+
+    if(!req.body.force){
+        let pendingTx = await getPendingVoteTransactions(electionId);
+        if(pendingTx.count > 0){
+            sendError(res, 409, `There are ${pendingTx.count} pending vote transactions.  Include paramater force:true to override.`)
             return;
         }
     }
@@ -1380,7 +1499,7 @@ adminApp.post('/election', async (req, res) => {
     if(network === "mainnet"){
         const allowed = await allowedToUseMainnet(req.user.uid);
         if(!allowed){
-            sendError(res, 403, "user is not allowed to use mainnet");
+            sendError(res, 403, "user is not yet allowed to use mainnet");
             return;
         }
     }
@@ -1399,6 +1518,9 @@ adminApp.post('/election', async (req, res) => {
         //prevents multiple firebase executions from double-sending
         await atMostOnce(COLLECTION_CREATE_ELECTION_TX, ref.id);
 
+        //TODO: coming from API user, demo=false,  UI user is demo=true
+        let isApi = !!(req.user.api);
+        
         let payload = {
             version: version,
             network: network,
@@ -1410,7 +1532,7 @@ adminApp.post('/election', async (req, res) => {
                 closeAfter: closeAfter,
                 metadataLocation: metadataLocation,
                 autoActivate: autoActivate,
-                isDemo: true, //TODO: make dynamic - for demos, anyone can vote on any election
+                isDemo: !isApi, 
                 uid: req.user.uid
             },
             callback: COLLECTION_CREATE_ELECTION_TX + "/" + ref.id
@@ -1675,7 +1797,20 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             let voteId = await hashVoteId(electionId, req.voter)
             let tokenId = await hashTokenId(electionId, req.tokenKey)
             let el = await getDeployedElection(electionId);
-
+            if(el.stopped) {
+                sendError(res, 409, "Election is no longer accepting votes");
+                return;
+            }
+            if(el.status !== "voting"){
+                let message = "Election must be in a 'voting' state. ";
+                if(el.status === "building"){
+                    message += "Activate the election first.";
+                } else if(el.status === "closed"){
+                    message += "The election is closed.";
+                }
+                sendError(res, 409, message);
+                return;
+            }
             if(el.requireProof){
                 try{
                     let validProof = await validateProof(req.body.vote, proof);
@@ -1710,6 +1845,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             };
 
             let jobRef = await submitEthTransaction(COLLECTION_VOTE_TX, {
+                electionId: electionId,
                 voteId: voteId,
                 status: "pending",
                 reqId: reqId

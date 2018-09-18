@@ -175,6 +175,15 @@ module.exports = {
 	CreateElection: async(obj) => {
     return await netvoteTxPost("/admin/election", obj)
   },
+  GetVoteTransactions: async(electionId) => {
+    return await netvoteGet(`/admin/election/${electionId}/vote/transactions`)
+  },
+  StopElection: async(obj) => {
+    return await netvotePost("/admin/election/stop", obj)
+  },
+  StartElection: async(obj) => {
+    return await netvotePost("/admin/election/start", obj)
+  },
   ActivateElection: async(obj) => {
     return await netvoteTxPost("/admin/election/activate", obj)
   },

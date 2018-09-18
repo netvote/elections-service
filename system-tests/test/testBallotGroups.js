@@ -45,7 +45,7 @@ const VOTE_0_0_0 = {
   }
 
 
-describe.skip(`Ballot Groups`, function() {
+describe(`Ballot Groups`, function() {
 
     let groupId;
     let electionId;

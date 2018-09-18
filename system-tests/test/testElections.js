@@ -65,31 +65,13 @@ describe(`End to End Election`, function() {
 
   let scenarios = [
     {
-      'name': 'election with manual activation',
-      'isPublic' : true,
-      'metadataLocation': metadataLocation,
-      'allowUpdates': true,
-      'closeAfter': new Date().getTime(),
-      'autoActivate': false,
-      'network': TEST_NETWORK
-    },
-    {
-      'name': 'election with auto activation',
-      'isPublic' : true,
-      'metadataLocation': metadataLocation,
-      'allowUpdates': true,
-      'closeAfter': 2*(new Date().getTime()),
-      'autoActivate': true,
-      'network': TEST_NETWORK
-    },
-    {
       'name': 'election with signature verification',
-      'isPublic' : true,
+      'isPublic' : false,
       'requireProof': true,
       'metadataLocation': metadataLocation,
       'allowUpdates': true,
       'closeAfter': new Date().getTime(),
-      'autoActivate': true,
+      'autoActivate': false,
       'network': TEST_NETWORK
     },
   ]
@@ -110,6 +92,7 @@ describe(`End to End Election`, function() {
         let expectedStatus = options.autoActivate ? 'voting' : 'building'
         assert.equal(deployedElection.status, options.autoActivate ? 'voting' : 'building', `expected ${expectedStatus} status`)
         assert.equal(deployedElection.resultsAvailable, options.isPublic)
+        assert.equal(deployedElection.demo, false)
         electionId = res.electionId;
         console.log(`electionId: ${electionId}`)
       });
@@ -191,6 +174,19 @@ describe(`End to End Election`, function() {
 
         assert.equal(tx2.status, "complete")
         assert.equal(tx3.status, "complete");
+      })
+
+      it('should stop election', async()=>{
+        await nv.StopElection({
+          electionId: electionId
+        });
+        deployedElection = await nv.GetDeployedElection(electionId);
+        assert.equal(deployedElection.stopped, true)
+      })
+
+      it('should get vote transactions', async()=>{
+        let tx = await nv.GetVoteTransactions(electionId);
+        assert.equal(tx.stats.complete, 5);
       })
 
       it('should close election', async()=>{
