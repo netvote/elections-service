@@ -2,8 +2,10 @@ const firebaseUpdater = require("./firebase-updater.js");
 // instantiate the iopipe library
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
+const AWS = require("aws-sdk");
+const crypto = require('crypto');
 
-
+const docClient = new AWS.DynamoDB.DocumentClient()
 
 const votedAlready = async (addr, voteId, BasePool) => {
     console.log("calling votedAlready for addr: "+addr+", voteId: "+voteId)
@@ -46,10 +48,46 @@ const updateVote = async(nv, voteObj, BasePool, version) => {
     return tx;
 };
 
+const updateVoteStatus = async(electionId, voteId, status) => {
+    let params = {
+        TableName:"votes",
+        Key:{
+            "electionId": electionId,
+            "voteId": voteId
+        },
+        UpdateExpression: "set txStatus = :val",
+        ExpressionAttributeValues:{
+            ":val": status
+        },
+        ReturnValues:"UPDATED_NEW"
+    };
+    await docClient.update(params).promise();
+}
+
+const insertVote = async(event) => {
+    let md5sum = crypto.createHash('md5');
+    md5sum.update(`${event.vote.voteId}:${event.vote.encryptedVote}`);
+    let voteId = md5sum.digest('hex');
+    let params = {
+        TableName: "votes",
+        Item: {
+            "electionId": event.electionId,
+            "voteId": voteId,
+            "event": event,
+            "txStatus": "pending"
+        }
+    }
+    await docClient.put(params).promise();
+    return voteId;
+}
+
 exports.handler = iopipe(async (event, context, callback) => {
     console.log(event);
     context.callbackWaitsForEmptyEventLoop = false;
+    let voteId;
     try {
+        voteId = await insertVote(event);
+        console.log({electionId: event.electionId, voteId: voteId})
         let version = event.vote.version ? event.vote.version : 15;
         let nv = await networks.NetvoteProvider(event.network);
         let BasePool = await nv.BasePool(version);
@@ -58,11 +96,13 @@ exports.handler = iopipe(async (event, context, callback) => {
         const ethTransaction = (update) ? updateVote : castVote;
         let voteType = (update) ? "revote" : "vote"
 
+        context.iopipe.label(voteId);
         context.iopipe.label(event.electionId);
         context.iopipe.label(event.network);
         context.iopipe.label(voteType);
 
         const tx = await ethTransaction(nv, event.vote, BasePool, version);
+        await updateVoteStatus(event.electionId, voteId, "complete");
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"
@@ -70,9 +110,14 @@ exports.handler = iopipe(async (event, context, callback) => {
         callback(null, "ok")
     }catch(e){
         console.error("error while transacting: ", e);
+        if(voteId){
+            await updateVoteStatus(event.electionId, voteId, "error");
+        }
         await firebaseUpdater.updateStatus(event.callback, {
-            status: "error"
+            status: "error",
+            error: e.message || "no message"
         });
-        callback(e, "error")
+        context.iopipe.label("error");
+        callback(null, "ok")
     }
 });
