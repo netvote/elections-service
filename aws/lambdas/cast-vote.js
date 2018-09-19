@@ -67,7 +67,7 @@ const updateVoteStatus = async(electionId, voteId, status, txId) => {
 
 const insertVote = async(event) => {
     let md5sum = crypto.createHash('md5');
-    md5sum.update(`${event.vote.voteId}:${event.vote.encryptedVote}`);
+    md5sum.update(`${event.vote.voteId}:${event.vote.encryptedVote}:${event.vote.tokenId}`);
     let voteId = md5sum.digest('hex');
     let params = {
         TableName: "votes",
@@ -75,6 +75,7 @@ const insertVote = async(event) => {
             "electionId": event.electionId,
             "voteId": voteId,
             "event": event,
+            "txTimestamp": new Date().getTime(),
             "txStatus": "pending"
         }
     }
