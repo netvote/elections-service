@@ -48,16 +48,17 @@ const updateVote = async(nv, voteObj, BasePool, version) => {
     return tx;
 };
 
-const updateVoteStatus = async(electionId, voteId, status) => {
+const updateVoteStatus = async(electionId, voteId, status, txId) => {
     let params = {
         TableName:"votes",
         Key:{
             "electionId": electionId,
             "voteId": voteId
         },
-        UpdateExpression: "set txStatus = :val",
+        UpdateExpression: "set txStatus=:sts, txId=:tx",
         ExpressionAttributeValues:{
-            ":val": status
+            ":sts": status,
+            ":tx": txId
         },
         ReturnValues:"UPDATED_NEW"
     };
@@ -102,7 +103,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         context.iopipe.label(voteType);
 
         const tx = await ethTransaction(nv, event.vote, BasePool, version);
-        await updateVoteStatus(event.electionId, voteId, "complete");
+        await updateVoteStatus(event.electionId, voteId, "complete", tx.tx);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"
@@ -111,7 +112,7 @@ exports.handler = iopipe(async (event, context, callback) => {
     }catch(e){
         console.error("error while transacting: ", e);
         if(voteId){
-            await updateVoteStatus(event.electionId, voteId, "error");
+            await updateVoteStatus(event.electionId, voteId, "error", "none");
         }
         await firebaseUpdater.updateStatus(event.callback, {
             status: "error",
