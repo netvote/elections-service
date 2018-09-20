@@ -20,6 +20,7 @@ const ENCRYPT_KEY_ARN = functions.config().netvote.secret.encryptkeyarn;
 const AWS = require('aws-sdk');
 AWS.config.update({ region: 'us-east-1' });
 const kmsClient = new AWS.KMS();
+const docClient = new AWS.DynamoDB.DocumentClient();
 
 const cookieParser = require('cookie-parser');
 const express = require('express');
@@ -1307,33 +1308,42 @@ adminApp.post('/election/activate', electionOwnerCheck, async (req, res) => {
     }
 });
 
-const getPendingVoteTransactions = async (electionId) => {
-    let db = firestore();
-    let snap = await db.collection(COLLECTION_VOTE_TX).where("electionId", "==", electionId).where("status", "==", "pending").get();    
-    let transactions = []
+const dynamoGetVoteTxs = async (electionId, status) => {
+    const params = {
+        TableName : "votes",
+        KeyConditionExpression: "electionId = :eid",
+        ExpressionAttributeValues: {
+            ":eid": electionId
+        }
+    };
 
-    let count = 0;
-    snap.forEach( (doc) => {
-        count++;
-        transactions.push({id:doc.id, status: doc.data().status, timestamp: doc.data().timestamp})
-    });
-    return {count: count, transactions: transactions};
+    let result = []
+    let data = await docClient.query(params).promise();
+
+    let statusCounters = {}
+    data.Items.forEach((itm)=>{
+        if(!statusCounters[itm.txStatus]){
+            statusCounters[itm.txStatus] = 0;
+        }
+        statusCounters[itm.txStatus]++;
+        if(!status || itm.txStatus === status){
+            result.push(itm);
+        }
+    })
+
+    let transactions = result.sort((a,b)=>{
+        return a.txTimestamp - b.txTimestamp;
+    })
+
+    return {stats: statusCounters, transactions: transactions};
+}
+
+const getPendingVoteTransactions = async (electionId) => {
+    return await dynamoGetVoteTxs(electionId, "pending");
 }
 
 const getVoteTransactions = async (electionId) => {
-    let db = firestore();
-    let snap = await db.collection(COLLECTION_VOTE_TX).where("electionId", "==", electionId).get();    
-    let transactions = []
-
-    let statusCounters = {}
-    snap.forEach( (doc) => {
-        if(!statusCounters[doc.data().status]){
-            statusCounters[doc.data().status] = 0;
-        }
-        statusCounters[doc.data().status]++;
-        transactions.push({id:doc.id, status: doc.data().status, timestamp: doc.data().timestamp})
-    });
-    return {stats: statusCounters, transactions: transactions};
+   return await dynamoGetVoteTxs(electionId);
 }
 
 adminApp.get('/election/:electionId/vote/transactions', electionOwnerCheck, async (req, res) => {
@@ -1422,8 +1432,8 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
 
     if(!req.body.force){
         let pendingTx = await getPendingVoteTransactions(electionId);
-        if(pendingTx.count > 0){
-            sendError(res, 409, `There are ${pendingTx.count} pending vote transactions.  Include paramater force:true to override.`)
+        if(pendingTx.stats["pending"] > 0){
+            sendError(res, 409, `There are ${pendingTx.stats["pending"]} pending vote transactions.  Include paramater force:true to override.`)
             return;
         }
     }
