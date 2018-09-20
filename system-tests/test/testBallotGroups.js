@@ -58,21 +58,22 @@ describe(`Ballot Groups`, function() {
         active: true
     }
 
-    before(async() => {
-        let options = {
-            'name': 'election with signature verification',
-            'isPublic' : true,
-            'requireProof': false,
-            'metadataLocation': metadataLocation,
-            'allowUpdates': true,
-            'autoActivate': true,
-            'network': TEST_NETWORK
-        }
+    let options = {
+        'name': 'election with signature verification',
+        'isPublic' : true,
+        'requireProof': false,
+        'metadataLocation': metadataLocation,
+        'allowUpdates': true,
+        'autoActivate': true,
+        'network': TEST_NETWORK
+    }
+
+    it('should create election', async () => {
         let res = await nv.CreateElection(options);
         deployedElection = await nv.GetDeployedElection(res.electionId);
         electionId = res.electionId;
         console.log("ElectionID: "+electionId);
-    });
+    })
 
     it('should create ballot group', async () => {
         let bg = await nv.CreateBallotGroup(ballotGroup);
