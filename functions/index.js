@@ -1305,6 +1305,26 @@ adminApp.post('/election/activate', electionOwnerCheck, async (req, res) => {
     }
 });
 
+const voteIdAlreadyVoted = async (electionId, voteId) => {
+    const params = {
+        TableName : "votes",
+        KeyConditionExpression: "electionId = :eid",
+        ExpressionAttributeValues: {
+            ":eid": electionId
+        }
+    };
+
+    let data = await docClient.query(params).promise();
+
+    for(let i=0; i<data.Items.length; i++){
+        let itm = data.Items[i];
+        if(itm.txStatus == "complete" && itm.voterId == voteId){
+            return true;
+        }
+    }
+    return false; 
+}
+
 const dynamoGetVoteTxs = async (electionId, status) => {
     const params = {
         TableName : "votes",
@@ -1765,6 +1785,21 @@ const validateProof = async (voteBase64, proof) => {
     const pub = ursa.createPublicKey(proofObj.publicKey, 'base64');    
     return pub.hashAndVerify('md5', new Buffer(voteBase64), proofObj.signature, "base64");
 }
+
+// takes voterID and checks to see if it has been used
+voterApp.post('/check', voterIdCheck, async (req, res) => {
+    let electionId = req.body.electionId;
+
+    let voterId = hmacVoterId(electionId + ":" + req.token);
+    let voteId = await hashVoteId(electionId, voterId);    
+
+    let el = await getDeployedElection(electionId);
+    
+    let alreadyVoted = await voteIdAlreadyVoted(electionId, voteId);
+    let canVote = (!alreadyVoted || (alreadyVoted && el.allowUpdates));
+
+    res.send({ voted: alreadyVoted, canVote: canVote });
+})
 
 voterApp.post('/cast', voterTokenCheck, async (req, res) => {
     console.log("/cast vote started")

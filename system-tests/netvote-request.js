@@ -210,6 +210,11 @@ module.exports = {
       Authorization: `Bearer ${token}`
     })
   },
+  CheckVote: async(obj, token) => {
+    return await netvotePost("/vote/check", obj, {
+      Authorization: `Bearer ${token}`
+    })
+  },
   CastVoteAsync: async(obj, token) => {
     return await netvotePost("/vote/cast", obj, {
       Authorization: `Bearer ${token}`

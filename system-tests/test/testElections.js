@@ -134,6 +134,19 @@ describe(`End to End Election`, function() {
         tokens = [token1, token2, token3]
       })
 
+      it('should check vote before vote', async()=>{
+        let payload = { electionId: electionId }
+
+        let check1 = await nv.CheckVote(payload, keys[0]);
+        let check2 = await nv.CheckVote(payload, keys[1]);
+        let check3 = await nv.CheckVote(payload, keys[2]);
+
+        [check1,check2,check3].forEach((check) => {
+          assert.equal(check.voted, false, "should not have voted already");
+          assert.equal(check.canVote, true, "should have voted already");
+        })
+      })
+
       it('should cast three votes', async()=>{
 
         // each is different if signing, because signature seed is uuid()
@@ -151,6 +164,19 @@ describe(`End to End Election`, function() {
         assert.equal(tx1.status, "complete")
         assert.equal(tx2.status, "complete")
         assert.equal(tx3.status, "complete");
+      })
+
+      it('should check vote after vote', async()=>{
+        let payload = { electionId: electionId }
+
+        let check1 = await nv.CheckVote(payload, keys[0]);
+        let check2 = await nv.CheckVote(payload, keys[1]);
+        let check3 = await nv.CheckVote(payload, keys[2]);
+
+        [check1,check2,check3].forEach((check) => {
+          assert.equal(check.voted, true, "should have voted already");
+          assert.equal(check.canVote, options.allowUpdates, "canVote should equal allowUpdates");
+        })
       })
 
       it('should update two votes', async()=>{
