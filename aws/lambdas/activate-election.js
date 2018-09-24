@@ -1,6 +1,7 @@
 const firebaseUpdater = require("./firebase-updater.js");
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
+const database = require("./netvote-data.js")
 
 const activateElection = async(nv, addr, ElectionPhaseable) => {
     const nonce = await nv.Nonce();
@@ -22,6 +23,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         const ElectionPhaseable = await nv.ElectionPhaseable(version);
         const tx = await activateElection(nv, event.address, ElectionPhaseable);
         console.log("activated election: "+event.address)
+        await database.setElectionStatus(event.electionId, "voting");
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             status: "voting",
         });

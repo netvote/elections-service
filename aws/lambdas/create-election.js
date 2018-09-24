@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const uuid = require('uuid/v4')
 const networks = require("./eth-networks.js");
+const database = require("./netvote-data.js")
 
 const VOTE_LIMIT = process.env.VOTE_LIMIT || "10000";
 const ENCRYPT_KEY_ARN = "arn:aws:kms:us-east-1:891335278704:key/994f296e-ce2c-4f2b-8cef-48d16644af09";
@@ -151,6 +152,18 @@ exports.handler = iopipe(async (event, context, callback) => {
         const tx = await createElection(electionId, event.election, event.network, event.version);
         context.iopipe.label(electionId);
         context.iopipe.label(event.network);
+
+        await database.addElection({
+            "electionId": electionId,
+            "owner": event.election.uid,
+            "props": event.election,
+            "txId": tx.transactionHash,
+            "network": event.network,
+            "version": event.version,
+            "address": tx.address,
+            "electionStatus": (event.election.autoActivate) ? "voting" : "building"
+        })
+
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
             electionId: electionId,
