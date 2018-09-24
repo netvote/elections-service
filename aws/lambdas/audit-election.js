@@ -26,7 +26,7 @@ exports.handler = iopipe(async (event, context, callback) => {
     let actualTotal = await BasePool.at(election.address).getVoteCount();
     let totalConfirmed = (expectedTotal === parseInt(actualTotal));
     let totalAudit = {
-        totalConfirmed: totalConfirmed,
+        confirmed: totalConfirmed,
         sentTotal: expectedTotal,
         chainTotal: parseInt(actualTotal)
     } 
@@ -52,15 +52,15 @@ exports.handler = iopipe(async (event, context, callback) => {
         votesByVoterId[voteId].chainProof = actualProof;
         votesByVoterId[voteId].voteConfirmed = (expectedVote === actualVote);
         votesByVoterId[voteId].proofConfirmed = (expectedProof === actualProof);
-        votesByVoterId[voteId].confirmed == (votesByVoterId[voteId].voteConfirmed && votesByVoterId[voteId].proofConfirmed)
+        votesByVoterId[voteId].confirmed = (votesByVoterId[voteId].voteConfirmed && votesByVoterId[voteId].proofConfirmed)
         if(!votesByVoterId[voteId].confirmed){
             problemVotes.push(voteId);
         }
     })
 
     let result = {
-        status: statusCounts,
-        totals: totalAudit,
+        transactions: statusCounts,
+        voterTotals: totalAudit,
         votes: votesByVoterId,
         problemVotes: problemVotes
     }
