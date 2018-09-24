@@ -1866,6 +1866,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
                 await asyncInvokeLambda(LAMBDA_ELECTION_CAST_VOTE, {
                     callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
                     vote: voteObj,
+                    allowUpdates: el.allowUpdates,
                     network: el.network,
                     electionId: electionId
                 });

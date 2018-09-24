@@ -38,8 +38,8 @@ const kmsEncrypt = async (ctx, plaintext) => {
     return result.CiphertextBlob.toString("base64");
 }
 
-const addDeployedElections = async(electionId, addr, metadataLocation, uid, version, isPublic, autoActivate, isDemo, requireProof, closeAfter, network) => {
-    const status = (autoActivate) ? "voting" : "building";
+const addDeployedElections = async(electionId, addr, election, version, network) => {
+    const status = (election.autoActivate) ? "voting" : "building";
 
     return firebaseUpdater.createDoc("deployedElections", electionId, {
         network: {
@@ -51,26 +51,29 @@ const addDeployedElections = async(electionId, addr, metadataLocation, uid, vers
         address: {
             stringValue: addr
         },
+        allowUpdates: {
+            booleanValue: election.allowUpdates
+        },
         requireProof: {
-            booleanValue: requireProof
+            booleanValue: election.requireProof
         },
         metadataLocation: {
-            stringValue: metadataLocation
+            stringValue: election.metadataLocation
         },
         version: {
             integerValue: `${version}`
         },
         resultsAvailable: {
-            booleanValue: isPublic
+            booleanValue: election.isPublic
         },
         uid: {
-            stringValue: uid
+            stringValue: election.uid
         },
         demo: {
-            booleanValue: isDemo
+            booleanValue: election.isDemo
         },
         closeAfter: {
-            integerValue: `${closeAfter}`
+            integerValue: `${election.closeAfter}`
         }
     })
 }
@@ -132,7 +135,7 @@ const createElection = async(electionId, election, network, version) => {
     
     await Promise.all(setupTasks);
 
-    await addDeployedElections(electionId, el.address, election.metadataLocation, election.uid, version, election.isPublic, election.autoActivate, election.isDemo, election.requireProof, election.closeAfter, network);
+    await addDeployedElections(electionId, el.address, election, version, network);
     return el;
 }
 

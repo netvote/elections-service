@@ -65,6 +65,7 @@ const insertVote = async(event) => {
         Item: {
             "electionId": event.electionId,
             "voteId": voteId,
+            "voterId": event.vote.voteId,
             "event": event,
             "txTimestamp": new Date().getTime(),
             "txStatus": "pending"
@@ -85,13 +86,24 @@ exports.handler = iopipe(async (event, context, callback) => {
         let nv = await networks.NetvoteProvider(event.network);
         let BasePool = await nv.BasePool(version);
         let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
+        
+        context.iopipe.label(event.electionId);
+        context.iopipe.label(event.network);
+        context.iopipe.label(voteId);
+
+        if(update && !event.allowUpdates) {
+            context.iopipe.label("duplicate-error");
+            await updateVoteStatus(event.electionId, voteId, "duplicate", "none");
+            await firebaseUpdater.updateStatus(event.callback, {
+                status: "duplicate",
+                error: "This voter has already voted.  Updates not allowed."
+            });
+            callback(null, "duplicate")
+            return;
+        }
 
         const ethTransaction = (update) ? updateVote : castVote;
         let voteType = (update) ? "revote" : "vote"
-
-        context.iopipe.label(voteId);
-        context.iopipe.label(event.electionId);
-        context.iopipe.label(event.network);
         context.iopipe.label(voteType);
 
         const tx = await ethTransaction(nv, event.vote, BasePool);
@@ -111,6 +123,8 @@ exports.handler = iopipe(async (event, context, callback) => {
             error: e.message || "no message"
         });
         context.iopipe.label("error");
-        callback(null, "ok")
+
+        // not going to retry - will be examined manually
+        callback(null, "error")
     }
 });
