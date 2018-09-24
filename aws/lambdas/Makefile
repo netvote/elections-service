@@ -12,6 +12,9 @@ deploy_add_authid:
 	aws lambda update-function-code --function-name election-add-authid --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 	aws lambda update-function-code --function-name election-publish-authids --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
+deploy_audit_election:
+	aws lambda update-function-code --function-name election-audit --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+
 deploy_cast_vote:
 	aws lambda update-function-code --function-name election-cast-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
@@ -40,6 +43,6 @@ deploy_add_observation:
 deploy_keep_alive:
 	aws lambda update-function-code --function-name private-keep-alive --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
-deploy: deploy_add_authid deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election deploy_tally_election deploy_get_vote deploy_add_observation deploy_reveal_key deploy_keep_alive
+deploy: deploy_audit_election deploy_add_authid deploy_cast_vote deploy_create_election deploy_activate_election deploy_close_election deploy_tally_election deploy_get_vote deploy_add_observation deploy_reveal_key deploy_keep_alive
 
 publish: build upload deploy

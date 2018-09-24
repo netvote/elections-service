@@ -19,6 +19,35 @@ const addElection = async (obj) => {
     return obj.electionId;
 }
 
+const getVotes = async (electionId) => {
+    const params = {
+        TableName : "votes",
+        KeyConditionExpression: "electionId = :eid",
+        ExpressionAttributeValues: {
+            ":eid": electionId
+        }
+    };
+
+    let data = await docClient.query(params).promise();
+    
+    result = {}
+
+    data.Items.forEach((itm)=>{
+        if(!result[itm.txStatus]){
+            result[itm.txStatus] = [];
+        }
+        result[itm.txStatus].push(itm);
+    })
+
+    Object.keys(result).forEach((status) => {
+        result[status] = result[status].sort((a,b)=>{
+            return a.txTimestamp - b.txTimestamp;
+        })
+    });
+
+    return result;
+}
+
 const setElectionStatus = async (electionId, status) => {
     let params = {
         TableName: TABLE_ELECTIONS,
@@ -48,5 +77,6 @@ const getElection = async (electionId) => {
 module.exports = { 
     addElection: addElection,
     getElection: getElection,
-    setElectionStatus: setElectionStatus
+    setElectionStatus: setElectionStatus,
+    getVotes: getVotes
 }
