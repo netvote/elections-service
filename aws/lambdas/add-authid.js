@@ -10,11 +10,6 @@ exports.handler = iopipe(async (event, context, callback) => {
         return;
     }
     try {
-        const version = event.version || 0;
-        if(version < 24) {
-            callback(null, "skipping due to version")
-            return;
-        }
         if(!event.authId || !event.electionId){
             callback(null, "missing authId, electionId skipping to avoid replay")
             return;

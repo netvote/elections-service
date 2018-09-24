@@ -1287,9 +1287,6 @@ adminApp.post('/election/activate', electionOwnerCheck, async (req, res) => {
 
         let payload = {
             electionId: electionId,
-            address: el.address,
-            network: el.network,
-            version: el.version,
             callback: collection + "/" + ref.id
         }
 
@@ -1446,9 +1443,6 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
 
     let payload = {
         electionId: electionId,
-        address: el.address,
-        network: el.network,
-        version: el.version,
         callback: collection + "/" + ref.id
     }
     //close election
@@ -1457,22 +1451,14 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
     let key = await getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS);
     payload = {
         key: key,
-        electionId: electionId,
-        address: el.address,
-        network: el.network,
-        version: el.version
+        electionId: electionId
     }
     await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
 
-    if(el.version > 23) {
-        let authIdParams = {
-            electionId: electionId,
-            address: el.address,
-            network: el.network,
-            version: el.version
-        }
-        await asyncInvokeLambda(LAMBDA_ELECTION_PUBLISH_AUTHIDS, authIdParams);
+    let authIdParams = {
+        electionId: electionId
     }
+    await asyncInvokeLambda(LAMBDA_ELECTION_PUBLISH_AUTHIDS, authIdParams);
 
     await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
     
@@ -1521,7 +1507,6 @@ adminApp.post('/election', async (req, res) => {
         network: network,
         uid: req.user.uid,
         metadataLocation: metadataLocation,
-        version: version
     });
 
     try{
@@ -1532,7 +1517,6 @@ adminApp.post('/election', async (req, res) => {
         let isApi = !!(req.user.api);
         
         let payload = {
-            version: version,
             network: network,
             election: {
                 type: "basic",
@@ -1845,9 +1829,6 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             }
 
             let voteObj = {
-                address: el.address,
-                version: el.version,
-                network: el.network,
                 proof: proof,
                 voteId: voteId,
                 encryptedVote: encryptedVote,
@@ -1866,8 +1847,6 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
                 await asyncInvokeLambda(LAMBDA_ELECTION_CAST_VOTE, {
                     callback: COLLECTION_VOTE_TX + "/" + jobRef.id,
                     vote: voteObj,
-                    allowUpdates: el.allowUpdates,
-                    network: el.network,
                     electionId: electionId
                 });
             }catch(e){
@@ -1938,9 +1917,6 @@ tallyApp.get('/election/:electionId', async (req, res) => {
         try{
             await asyncInvokeLambda(LAMBDA_ELECTION_TALLY, {
                 callback: COLLECTION_TALLY_TX + "/" + jobRef.id,
-                address: deployedElection.address,
-                version: deployedElection.version,
-                network: deployedElection.network,
                 electionId: electionId,
                 validateSignatures: deployedElection.requireProof
             })

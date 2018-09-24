@@ -16,13 +16,14 @@ exports.handler = iopipe(async (event, context, callback) => {
         return;
     }
     try {
-        let version = event.version ? event.version : 15;
-        let nv = await networks.NetvoteProvider(event.network);
+        let election = await database.getElection(event.electionId);
+        let version = election.version;
+        let nv = await networks.NetvoteProvider(election.network);
         context.iopipe.label(event.electionId);
-        context.iopipe.label(event.network);
+        context.iopipe.label(election.network);
         const ElectionPhaseable = await nv.ElectionPhaseable(version);
-        const tx = await activateElection(nv, event.address, ElectionPhaseable);
-        console.log("activated election: "+event.address)
+        const tx = await activateElection(nv, election.address, ElectionPhaseable);
+        console.log("activated election: "+election.address)
         await database.setElectionStatus(event.electionId, "voting");
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             status: "voting",

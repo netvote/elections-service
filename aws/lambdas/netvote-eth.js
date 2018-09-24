@@ -160,6 +160,9 @@ module.exports = {
     network: () => {
         return NETWORK.id
     },
+    version: () => {
+        return NETWORK.version
+    },
     gatewayAddress: () => {
         return web3Provider.getAddress();
     },

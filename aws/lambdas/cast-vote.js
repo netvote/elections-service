@@ -4,6 +4,7 @@ const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const networks = require("./eth-networks.js");
 const AWS = require("aws-sdk");
 const crypto = require('crypto');
+const database = require('./netvote-data.js')
 
 const docClient = new AWS.DynamoDB.DocumentClient()
 
@@ -13,27 +14,27 @@ const votedAlready = async (addr, voteId, BasePool) => {
     return res !== '';
 };
 
-const castVote = async(nv, voteObj, BasePool) => {
+const castVote = async(nv, address, voteObj, BasePool) => {
     console.log("casting vote from "+nv.gatewayAddress())
     const nonce = await nv.Nonce();
     let tx;
     if(voteObj.proof){
-        tx = await BasePool.at(voteObj.address).castVoteWithProof(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, voteObj.proof, {nonce: nonce, from: nv.gatewayAddress()})
+        tx = await BasePool.at(address).castVoteWithProof(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, voteObj.proof, {nonce: nonce, from: nv.gatewayAddress()})
     } else {
-        tx = await BasePool.at(voteObj.address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+        tx = await BasePool.at(address).castVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
     }
     console.log("completed casting vote")
     return tx;
 };
 
-const updateVote = async(nv, voteObj, BasePool) => {
+const updateVote = async(nv, address, voteObj, BasePool) => {
     console.log("updating vote from "+nv.gatewayAddress())
     const nonce = await nv.Nonce();
     let tx;
     if(voteObj.proof){
-        tx = await BasePool.at(voteObj.address).updateVoteWithProof(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, voteObj.proof, {nonce: nonce, from: nv.gatewayAddress()})
+        tx = await BasePool.at(address).updateVoteWithProof(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, voteObj.proof, {nonce: nonce, from: nv.gatewayAddress()})
     } else {
-        tx = await BasePool.at(voteObj.address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
+        tx = await BasePool.at(address).updateVote(voteObj.voteId, voteObj.encryptedVote, voteObj.tokenId, {nonce: nonce, from: nv.gatewayAddress()})
     }
     console.log("completed updating vote")
     return tx;
@@ -79,21 +80,25 @@ exports.handler = iopipe(async (event, context, callback) => {
     console.log(event);
     context.callbackWaitsForEmptyEventLoop = false;
     let voteId;
+    let electionId;
     try {
         voteId = await insertVote(event);
-        console.log({electionId: event.electionId, voteId: voteId})
-        let version = event.vote.version ? event.vote.version : 15;
-        let nv = await networks.NetvoteProvider(event.network);
+        electionId = event.electionId;
+        let election = await database.getElection(electionId);
+        console.log({electionId: electionId, voteId: voteId})
+
+        let version = election.version;
+        let nv = await networks.NetvoteProvider(election.network);
         let BasePool = await nv.BasePool(version);
-        let update = await votedAlready(event.vote.address, event.vote.voteId, BasePool);
-        
-        context.iopipe.label(event.electionId);
-        context.iopipe.label(event.network);
+        let update = await votedAlready(election.address, event.vote.voteId, BasePool);
+    
+        context.iopipe.label(electionId);
+        context.iopipe.label(election.network);
         context.iopipe.label(voteId);
 
-        if(update && !event.allowUpdates) {
+        if(update && !election.props.allowUpdates) {
             context.iopipe.label("duplicate-error");
-            await updateVoteStatus(event.electionId, voteId, "duplicate", "none");
+            await updateVoteStatus(electionId, voteId, "duplicate", "none");
             await firebaseUpdater.updateStatus(event.callback, {
                 status: "duplicate",
                 error: "This voter has already voted.  Updates not allowed."
@@ -106,8 +111,8 @@ exports.handler = iopipe(async (event, context, callback) => {
         let voteType = (update) ? "revote" : "vote"
         context.iopipe.label(voteType);
 
-        const tx = await ethTransaction(nv, event.vote, BasePool);
-        await updateVoteStatus(event.electionId, voteId, "complete", tx.tx);
+        const tx = await ethTransaction(nv, election.address, event.vote, BasePool);
+        await updateVoteStatus(electionId, voteId, "complete", tx.tx);
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"
@@ -116,7 +121,7 @@ exports.handler = iopipe(async (event, context, callback) => {
     }catch(e){
         console.error("error while transacting: ", e);
         if(voteId){
-            await updateVoteStatus(event.electionId, voteId, "error", "none");
+            await updateVoteStatus(electionId, voteId, "error", "none");
         }
         await firebaseUpdater.updateStatus(event.callback, {
             status: "error",

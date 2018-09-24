@@ -3,6 +3,7 @@ const networks = require("./eth-networks.js");
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const tally = require("@netvote/elections-tally");
 const updateEveryNVotes = process.env.UPDATE_EVERY_N_VOTES ? parseInt(process.env.UPDATE_EVERY_N_VOTES) : 100;
+const database = require("./netvote-data.js")
 
 exports.handler = iopipe(async (event, context, callback) => {
     console.log(event);
@@ -12,10 +13,11 @@ exports.handler = iopipe(async (event, context, callback) => {
         return;
     }
     try {
-        let version = event.version ? event.version : 15;
+        let election = await database.getElection(event.electionId);
+        let version = election.version;
         let validateSignatures = !!(event.validateSignatures);
-        let address = event.address;
-        let nv = await networks.NetvoteProvider(event.network);
+        let address = election.address;
+        let nv = await networks.NetvoteProvider(election.network);
         if(!address){
             throw new Error("must specify address in event")
         }
@@ -23,7 +25,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         let counter = 0;
         let badVotes = [];
         context.iopipe.label(event.electionId);
-        context.iopipe.label(event.network);
+        context.iopipe.label(election.network);
         context.iopipe.label((validateSignatures) ? "signatures" : "no-signatures");
     
         let result = await tally.tallyElection({

@@ -34,13 +34,15 @@ const setElectionStatus = async (electionId, status) => {
 }
 
 const getElection = async (electionId) => {
+    console.log("get election Id: "+electionId)
     var params = {
         TableName: TABLE_ELECTIONS,
         Key:{
             "electionId": electionId
         }
     };
-    return await docClient.get(params).promise();
+    let data = await docClient.get(params).promise();
+    return data.Item;
 }
 
 module.exports = { 

@@ -101,19 +101,17 @@ const addElectionToAllowance = async(nv, vc, address) => {
     console.log("added address to vote contract for event subscription")
 }
 
-const createElection = async(electionId, election, network, version) => {
+const createElection = async(electionId, election, network) => {
     let nv = await networks.NetvoteProvider(network);
-
+    let version = nv.version();
     let VA = await nv.Vote(version)
     let VoteContract = await VA.deployed();
-
     let web3 = nv.web3();
     let gatewayAddress = nv.gatewayAddress();
-    version = (version) ? version : 15;
+
     BasicElection = await nv.BasicElection(version);
 
     let nonce = await nv.Nonce();
-
     let el = await BasicElection.new(
         web3.utils.sha3(election.uid),
         VoteContract.address,
@@ -136,6 +134,17 @@ const createElection = async(electionId, election, network, version) => {
     
     await Promise.all(setupTasks);
 
+    await database.addElection({
+        "electionId": electionId,
+        "owner": election.uid,
+        "props": election,
+        "txId": el.transactionHash,
+        "network": network,
+        "version": version,
+        "address": el.address,
+        "electionStatus": (election.autoActivate) ? "voting" : "building"
+    })
+
     await addDeployedElections(electionId, el.address, election, version, network);
     return el;
 }
@@ -149,20 +158,10 @@ exports.handler = iopipe(async (event, context, callback) => {
     }
     try {
         let electionId = uuid();
-        const tx = await createElection(electionId, event.election, event.network, event.version);
+        const tx = await createElection(electionId, event.election, event.network);
+
         context.iopipe.label(electionId);
         context.iopipe.label(event.network);
-
-        await database.addElection({
-            "electionId": electionId,
-            "owner": event.election.uid,
-            "props": event.election,
-            "txId": tx.transactionHash,
-            "network": event.network,
-            "version": event.version,
-            "address": tx.address,
-            "electionStatus": (event.election.autoActivate) ? "voting" : "building"
-        })
 
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.transactionHash,
