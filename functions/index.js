@@ -1786,17 +1786,20 @@ const validateProof = async (voteBase64, proof) => {
     return pub.hashAndVerify('md5', new Buffer(voteBase64), proofObj.signature, "base64");
 }
 
-// takes voterID and checks to see if it has been used
+// takes voterID and checks to see if it has been used so that UI can show "you have already voted"
 voterApp.post('/check', voterIdCheck, async (req, res) => {
-    let electionId = req.body.electionId;
+    const electionId = req.body.electionId;
+    const el = await getDeployedElection(electionId);
 
-    let voterId = hmacVoterId(electionId + ":" + req.token);
-    let voteId = await hashVoteId(electionId, voterId);    
+    if(el.status !== "voting"){
+        sendError(res, 409, `Election must be in 'voting' state (state=${el.status})`)
+        return;
+    }
 
-    let el = await getDeployedElection(electionId);
-    
-    let alreadyVoted = await voteIdAlreadyVoted(electionId, voteId);
-    let canVote = (!alreadyVoted || (alreadyVoted && el.allowUpdates));
+    const voterId = hmacVoterId(electionId + ":" + req.token);
+    const voteId = await hashVoteId(electionId, voterId);    
+    const alreadyVoted = await voteIdAlreadyVoted(electionId, voteId);
+    const canVote = (!alreadyVoted || (alreadyVoted && el.allowUpdates));
 
     res.send({ voted: alreadyVoted, canVote: canVote });
 })
