@@ -101,7 +101,7 @@ const addElectionToAllowance = async(nv, vc, address) => {
     console.log("added address to vote contract for event subscription")
 }
 
-const createElection = async(electionId, election, network) => {
+const createElection = async(electionId, election, network, user) => {
     let nv = await networks.NetvoteProvider(network);
     let version = nv.version();
     let VA = await nv.Vote(version)
@@ -134,7 +134,7 @@ const createElection = async(electionId, election, network) => {
     
     await Promise.all(setupTasks);
 
-    await database.addElection({
+    let obj = {
         "electionId": electionId,
         "owner": election.uid,
         "props": election,
@@ -143,7 +143,13 @@ const createElection = async(electionId, election, network) => {
         "version": version,
         "address": el.address,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
-    })
+    }
+
+    if(user){
+        obj.company = user.company;
+    }
+
+    await database.addElection(obj)
 
     await addDeployedElections(electionId, el.address, election, version, network);
     return el;
@@ -158,17 +164,28 @@ exports.handler = iopipe(async (event, context, callback) => {
     }
     try {
         let electionId = uuid();
-        const tx = await createElection(electionId, event.election, event.network);
+        const tx = await createElection(electionId, event.election, event.network, event.user);
 
         context.iopipe.label(electionId);
         context.iopipe.label(event.network);
 
-        await firebaseUpdater.updateStatus(event.callback, {
+        let result = {
             tx: tx.transactionHash,
             electionId: electionId,
             status: "complete",
             address: electionId
-        }, true);
+        };
+
+        //aws gateway API
+        await database.setJobSuccess(event.jobId, {
+            address: tx.address,
+            electionId: electionId,
+            tx: tx.transactionHash
+        })
+
+        //firebase API
+        await firebaseUpdater.updateStatus(event.callback, result, true);
+
         console.log("completed successfully")
         context.callbackWaitsForEmptyEventLoop = false;
         callback(null, "ok")

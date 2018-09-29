@@ -24,6 +24,11 @@ exports.handler = iopipe(async (event, context, callback) => {
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             resultsAvailable: true
         });
+
+        await database.setJobSuccess(event.jobId, {
+            tx: tx.transactionHash
+        })
+
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"
@@ -31,6 +36,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         callback(null, "ok")
     }catch(e){
         console.error("error while transacting: ", e);
+        await database.setJobError(event.jobId, e.message);
         await firebaseUpdater.updateStatus(event.callback, {
             status: "error"
         });

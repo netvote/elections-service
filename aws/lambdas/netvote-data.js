@@ -3,6 +3,7 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 const uuid = require('uuid/v4')
 
 const TABLE_ELECTIONS = "elections";
+const TABLE_ASYNC_JOBS = "asyncJobs";
 
 const addElection = async (obj) => {
     if(!obj.electionId){
@@ -74,9 +75,36 @@ const getElection = async (electionId) => {
     return data.Item;
 }
 
+const setJobResult = async (jobId, obj, status) => {
+    // firebase api calls do not have jobId, ignore
+    if(!jobId) return;
+    var params = {
+        TableName: TABLE_ASYNC_JOBS,
+        Key:{
+            "jobId": jobId
+        },
+        UpdateExpression: "set txResult = :o, txStatus = :s",
+        ExpressionAttributeValues:{
+            ":o": obj,
+            ":s": status,
+        }
+    };
+    await docClient.update(params).promise();
+}
+
+const setJobSuccess = async (jobId, result) => {
+    await setJobResult(jobId, result, "complete")
+}
+
+const setJobError = async (jobId, message) => {
+    await setJobResult(jobId, message, "error")
+}
+
 module.exports = { 
     addElection: addElection,
     getElection: getElection,
     setElectionStatus: setElectionStatus,
-    getVotes: getVotes
+    getVotes: getVotes,
+    setJobSuccess: setJobSuccess,
+    setJobError: setJobError
 }
