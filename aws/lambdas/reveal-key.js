@@ -18,7 +18,12 @@ exports.handler = iopipe(async (event, context, callback) => {
         let version = election.version;
         const nv = await networks.NetvoteProvider(election.network);
         const BaseElection = await nv.BaseElection(version);
-        const tx = await postEncryptionKey(nv, election.address, event.key, BaseElection);
+
+        // at no point can encryption key be known before vote key is deleted
+        await database.clearVoterKey(event.electionId);
+        let plainTextKey = await database.getDecryptedKey(event.electionId, "encryption")
+    
+        const tx = await postEncryptionKey(nv, election.address, plainTextKey, BaseElection);
         context.iopipe.label(event.electionId);
         context.iopipe.label(election.network);
         await firebaseUpdater.updateDeployedElection(event.electionId, {

@@ -8,6 +8,11 @@ const closeElection = async(nv, addr, ElectionPhaseable) => {
     return ElectionPhaseable.at(addr).close({nonce: nonce, from: nv.gatewayAddress()})
 };
 
+const postEncryptionKey = async(nv, addr, key, BaseElection) => {
+    const nonce = await nv.Nonce();
+    return BaseElection.at(addr).setPrivateKey(key, {nonce: nonce, from: nv.gatewayAddress()})
+};
+
 exports.handler = iopipe(async (event, context, callback) => {
     console.log(event);
     context.callbackWaitsForEmptyEventLoop = false;
@@ -22,21 +27,40 @@ exports.handler = iopipe(async (event, context, callback) => {
         context.iopipe.label(event.electionId);
         context.iopipe.label(election.network);
         const ElectionPhaseable = await nv.ElectionPhaseable(version);
-        const tx = await closeElection(nv, election.address, ElectionPhaseable);
+        const BaseElection = await nv.BaseElection(version);
+        let statusObj = {}
+
+        // close election
+        let tx = await closeElection(nv, election.address, ElectionPhaseable);
+        statusObj.tx = tx.tx;
         console.log("closed election: "+election.address)
+
+        // clear voter key
+        await database.clearVoterKey(event.electionId);
+
+        // reveal encryption key
+        if(!election.resultsAvailable){
+            let plainTextKey = await database.getDecryptedKey(event.electionId, "encryption")
+            console.log("retrieved encryption key: "+event.electionId)
+
+            let revealTx = await postEncryptionKey(nv, election.address, plainTextKey, BaseElection);
+            console.log("encryption key posted: "+event.electionId)
+
+            statusObj.revealTx = revealTx.tx;
+            await database.setResultsAvailable(event.electionId, true);
+            console.log("set results available: "+event.electionId)
+        }
         await database.setElectionStatus(event.electionId, "closed");
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             status: "closed",
+            resultsAvailable: true
         });
 
-        await database.setJobSuccess(event.jobId, {
-            tx: tx.transactionHash
-        })
+        await database.setJobSuccess(event.jobId, statusObj)
 
-        await firebaseUpdater.updateStatus(event.callback, {
-            tx: tx.tx,
-            status: "complete"
-        }, true);
+        statusObj.status = "complete"
+        console.log(statusObj);
+        await firebaseUpdater.updateStatus(event.callback, statusObj, true);
         callback(null, "ok")
     }catch(e){
         console.error("error while transacting: ", e);

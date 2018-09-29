@@ -1,15 +1,13 @@
 const AWS = require("aws-sdk");
-const kmsClient = new AWS.KMS();
 
 const firebaseUpdater = require("./firebase-updater.js");
 const crypto = require('crypto');
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
 const uuid = require('uuid/v4')
 const networks = require("./eth-networks.js");
-const database = require("./netvote-data.js")
+const database = require("./netvote-data.js");
 
 const VOTE_LIMIT = process.env.VOTE_LIMIT || "10000";
-const ENCRYPT_KEY_ARN = "arn:aws:kms:us-east-1:891335278704:key/994f296e-ce2c-4f2b-8cef-48d16644af09";
 
 const toHmac = (value, key) => {
     const hmac = crypto.createHmac('sha256', key);
@@ -17,10 +15,11 @@ const toHmac = (value, key) => {
     return hmac.digest('hex');
 };
 
-const generateHashKey = async(collection, id) =>{
-    let secret = uuid();
-    const encryptionCtx = {"id": id,"type": collection}
-    let encrypted = await kmsEncrypt(encryptionCtx, secret);
+const generateKey = async (electionId, keyType) => {
+    return await database.generateElectionKey(electionId, keyType);
+}
+
+const firebaseSaveHashKey = async(collection, id, encrypted) =>{
     let key = toHmac(id, process.env.STORAGE_HASH_SECRET);
     await firebaseUpdater.createDoc(collection, key, {
         secret: {
@@ -30,13 +29,6 @@ const generateHashKey = async(collection, id) =>{
             booleanValue: true
         }
     })
-    return secret;
-}
-
-const kmsEncrypt = async (ctx, plaintext) => {
-    const params = { EncryptionContext:ctx, KeyId: ENCRYPT_KEY_ARN, Plaintext: plaintext };
-    const result = await kmsClient.encrypt(params).promise()
-    return result.CiphertextBlob.toString("base64");
 }
 
 const addDeployedElections = async(electionId, addr, election, version, network) => {
@@ -87,10 +79,11 @@ const transferVoteAllowance = async (nv, vc, address) => {
 }
 
 const postPrivateKey = async (nv, electionId, address, isPublic) => {
-    let encryptionKey = await generateHashKey("encryptionKeys", electionId)
+    let encryptionKey = await generateKey(electionId, "encryption");
+    await firebaseSaveHashKey("encryptionKeys", electionId, encryptionKey.encrypted);
     if (isPublic) {
         let nonce = await nv.Nonce();
-        await BasicElection.at(address).setPrivateKey(encryptionKey, {nonce: nonce, from: nv.gatewayAddress()})
+        await BasicElection.at(address).setPrivateKey(encryptionKey.plaintext, {nonce: nonce, from: nv.gatewayAddress()})
         console.log("released private key: "+address)
     }
 }
@@ -125,7 +118,8 @@ const createElection = async(electionId, election, network, user) => {
     
     console.log("created election: "+el.address+", id="+electionId);
 
-    await generateHashKey("hashSecrets", electionId)
+    let hashKey = await generateKey(electionId, "voter");
+    await firebaseSaveHashKey("hashSecrets", electionId, hashKey.encrypted);
 
     let setupTasks = []
     setupTasks.push(transferVoteAllowance(nv, VoteContract, el.address))
@@ -142,6 +136,7 @@ const createElection = async(electionId, election, network, user) => {
         "network": network,
         "version": version,
         "address": el.address,
+        "resultsAvailable": election.isPublic,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
     }
 

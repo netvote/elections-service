@@ -485,6 +485,10 @@ const validateVote = async (vote, metadataLocation, requireProof) => {
 
 const electionOwnerCheck = (req, res, next) => {
     let electionId = req.body.electionId || req.body.address || req.params.electionId;
+    if(!electionId){
+        sendError(res, 400, "electionId is required")
+        return;
+    }
     uidAuthorized(req.user.uid, electionId).then((match) => {
         if (match) {
             return next();
@@ -553,18 +557,26 @@ const kmsDecrypt = async (ctx, encryptedString) => {
     return result.Plaintext.toString();
 }
 
+let keyTypes = {
+    "encryptionKeys": "encryption",
+    "hashSecrets": "voter"
+}
+
 const getHashKey = async (electionId, collection) => {
     initUuid();
     let db = firestore();
+    let kt = keyTypes[collection] || collection;
     const electionHmac = toHmac(electionId, storageHashSecret);
     let doc = await db.collection(collection).doc(electionHmac).get();
-    const encryptionCtx = {"id": electionId,"type": collection}
+    const encryptionCtx = {"id": electionId,"type": kt}
     if (doc.exists) {
         if(doc.data().encrypted){
             return await kmsDecrypt(encryptionCtx, doc.data().secret)
         }
         return doc.data().secret
     } else {
+        console.warn("lazy-generating "+collection+", this should never happen now, id="+electionId)
+        //TODO: remove logic if above log never occurs
         const secret = uuid();
         let encrypted = await kmsEncrypt(encryptionCtx, secret);
         await db.collection(collection).doc(electionHmac).set({
@@ -1264,12 +1276,7 @@ adminApp.post('/election/keys', electionOwnerCheck, async (req, res) => {
 
 adminApp.post('/election/activate', electionOwnerCheck, async (req, res) => {
     try{
-        let electionId = req.body.electionId || req.body.address;
-        if (!electionId) {
-            sendError(res, 400, "electionId is required");
-            return;
-        }
-
+        let electionId = req.body.electionId || req.body.address; //address deprecated
         let el = await getDeployedElection(electionId);
 
         if(el.status !== "building"){
@@ -1378,18 +1385,13 @@ adminApp.post('/election/start', electionOwnerCheck, async (req, res) => {
     }
 
     let el = await getDeployedElection(electionId);
-    if(el.status !== "voting"){
-        let message = "Election must be in a 'voting' state to be closed. ";
-        if(el.status === "building"){
-            message += "Activate the election first.";
-        } else if(el.status === "closed"){
-            message += "The election is closed.";
-        }
+    if(el.status !== "stopped"){
+        let message = "Election must be in a 'stopped' state to be resumed. ";
         sendError(res, 409, message);
         return;
     }
 
-    await updateDeployedElection(electionId, {stopped: false});
+    await updateDeployedElection(electionId, {status: "voting", stopped: false});
     res.send({ status: "ok" });
     return;
 });
@@ -1403,7 +1405,7 @@ adminApp.post('/election/stop', electionOwnerCheck, async (req, res) => {
 
     let el = await getDeployedElection(electionId);
     if(el.status !== "voting"){
-        let message = "Election must be in a 'voting' state to be closed. ";
+        let message = "Election must be in a 'voting' state to be stopped. ";
         if(el.status === "building"){
             message += "Activate the election first.";
         } else if(el.status === "closed"){
@@ -1413,7 +1415,7 @@ adminApp.post('/election/stop', electionOwnerCheck, async (req, res) => {
         return;
     }
 
-    await updateDeployedElection(electionId, {stopped: true});
+    await updateDeployedElection(electionId, {status: "stopped", stopped: true});
     res.send({ status: "ok" });
     return;
 });
@@ -1428,7 +1430,7 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
     
     let el = await getDeployedElection(electionId);
 
-    if(el.status !== "voting"){
+    if(el.status !== "voting" && el.status !== "stopped"){
         let message = "Election must be in a 'voting' state to be closed. ";
         if(el.status === "building"){
             message += "Activate the election first.";
@@ -1465,22 +1467,17 @@ adminApp.post('/election/close', electionOwnerCheck, async (req, res) => {
         electionId: electionId,
         callback: collection + "/" + ref.id
     }
+
+    await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
+
     //close election
     await asyncInvokeLambda(LAMBDA_ELECTION_CLOSE, payload);
-
-    let key = await getHashKey(electionId, COLLECTION_ENCRYPTION_KEYS);
-    payload = {
-        key: key,
-        electionId: electionId
-    }
-    await asyncInvokeLambda(LAMBDA_ELECTION_REVEAL_KEY, payload);
 
     let authIdParams = {
         electionId: electionId
     }
     await asyncInvokeLambda(LAMBDA_ELECTION_PUBLISH_AUTHIDS, authIdParams);
 
-    await removeHashKey(electionId, COLLECTION_HASH_SECRETS)
     
     res.send({ txId: ref.id, collection: collection });
     return;
@@ -1494,11 +1491,11 @@ const allowedToUseMainnet = async (uid) => {
 }
 
 adminApp.post('/election', async (req, res) => {
-    let isPublic = !!(req.body.isPublic);
-    let network = req.body.network || "ropsten";
-    let metadataLocation = req.body.metadataLocation;
+    let isPublic = !!(req.body.continuousReveal) || !!(req.body.isPublic);
+    let network = req.body.network || "netvote";
+    let metadataLocation = req.body.metadataReference || req.body.metadataLocation;
     let allowUpdates = !!(req.body.allowUpdates);
-    let autoActivate = !!(req.body.autoActivate);
+    let autoActivate = !!(req.body.activateNow) || !!(req.body.autoActivate);
     let requireProof = !!(req.body.requireProof);
     let closeAfter = req.body.closeAfter || 0;
 
@@ -1519,8 +1516,6 @@ adminApp.post('/election', async (req, res) => {
             return;
         }
     }
-
-    let version = await latestContractVersion(network);
 
     let ref = await submitEthTransaction(COLLECTION_CREATE_ELECTION_TX, {
         type: "basic",
@@ -1829,7 +1824,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
             let voteId = await hashVoteId(electionId, req.voter)
             let tokenId = await hashTokenId(electionId, req.tokenKey)
             let el = await getDeployedElection(electionId);
-            if(el.stopped) {
+            if(el.stopped || el.status == "stopped") {
                 sendError(res, 409, "Election is no longer accepting votes");
                 return;
             }

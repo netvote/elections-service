@@ -74,10 +74,14 @@ exports.handler = iopipe(async (event, context, callback) => {
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             authIdReference: hash,
         });
-           
+
+        await database.setJobSuccess(event.jobId, statusObj)
+         
         console.log({electionId: event.electionId, address: election.address, count: authIds.length, hash: hash });
         callback(null, "ok")
     }catch(e){
+        await database.setJobError(event.jobId, e.message);
+
         callback(e, "error occured")
     }
 });
