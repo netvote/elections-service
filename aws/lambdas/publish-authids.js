@@ -69,13 +69,13 @@ exports.handler = iopipe(async (event, context, callback) => {
 
         let hash = await ipfs.putItem(JSON.stringify(payload));
         const nonce = await nv.Nonce();
-        await BasePool.at(election.address).setAuthIdRef(hash, {nonce: nonce, from: nv.gatewayAddress()});
+        let tx = await BasePool.at(election.address).setAuthIdRef(hash, {nonce: nonce, from: nv.gatewayAddress()});
 
         await firebaseUpdater.updateDeployedElection(event.electionId, {
             authIdReference: hash,
         });
 
-        await database.setJobSuccess(event.jobId, statusObj)
+        await database.setJobSuccess(event.jobId, {ipfs: hash, tx: tx.tx})
          
         console.log({electionId: event.electionId, address: election.address, count: authIds.length, hash: hash });
         callback(null, "ok")

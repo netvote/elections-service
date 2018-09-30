@@ -81,7 +81,6 @@ const setResultsAvailable = async (electionId, available) => {
 }
 
 const getElection = async (electionId) => {
-    console.log("get election Id: "+electionId)
     var params = {
         TableName: TABLE_ELECTIONS,
         Key:{
@@ -95,15 +94,20 @@ const getElection = async (electionId) => {
 const setJobResult = async (jobId, obj, status) => {
     // firebase api calls do not have jobId, ignore
     if(!jobId) return;
+
+    let ttlDate = new Date();
+    ttlDate.setDate(ttlDate.getDate() + 30);
+    let ttlValue = Math.floor(ttlDate.getTime()/1000)
     var params = {
         TableName: TABLE_ASYNC_JOBS,
         Key:{
             "jobId": jobId
         },
-        UpdateExpression: "set txResult = :o, txStatus = :s",
+        UpdateExpression: "set txResult = :o, txStatus = :s, ttlTimestamp = :t",
         ExpressionAttributeValues:{
             ":o": obj,
             ":s": status,
+            ":t": ttlValue
         }
     };
     await docClient.update(params).promise();
@@ -114,7 +118,7 @@ const setJobSuccess = async (jobId, result) => {
 }
 
 const setJobError = async (jobId, message) => {
-    await setJobResult(jobId, message, "error")
+    await setJobResult(jobId, {message: message}, "error")
 }
 
 const addKey = async (electionId, keyType, key) => {

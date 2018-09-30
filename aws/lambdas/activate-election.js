@@ -30,7 +30,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         });
 
         await database.setJobSuccess(event.jobId, {
-            tx: tx.transactionHash
+            tx: tx.tx
         })
 
         await firebaseUpdater.updateStatus(event.callback, {
