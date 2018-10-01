@@ -135,6 +135,7 @@ const createElection = async(electionId, election, network, user) => {
         "txId": el.transactionHash,
         "network": network,
         "version": version,
+        "netvoteKeyAuth": !!(el.netvoteKeyAuth),
         "address": el.address,
         "resultsAvailable": election.isPublic,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
