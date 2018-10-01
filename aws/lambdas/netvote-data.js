@@ -2,6 +2,7 @@ const AWS = require("aws-sdk");
 const kmsClient = new AWS.KMS();
 const docClient = new AWS.DynamoDB.DocumentClient();
 const uuid = require('uuid/v4')
+const ursa = require('ursa')
 
 const TABLE_ELECTIONS = "elections";
 const TABLE_ASYNC_JOBS = "asyncJobs";
@@ -125,7 +126,25 @@ const addKey = async (electionId, keyType, key) => {
     let obj = {
         electionId: electionId,
         keyType: keyType,
-        encryptedValue: key,
+        value: key,
+        encrypted: true,
+        txTimestamp: new Date().getTime()
+    }
+
+    let params = {
+        TableName: "electionKeys",
+        Item: obj
+    }
+    await docClient.put(params).promise();
+    return obj.electionId;
+}
+
+const addUnencryptedKey = async (electionId, keyType, key) => {
+    let obj = {
+        electionId: electionId,
+        keyType: keyType,
+        value: key,
+        encrypted: false,
         txTimestamp: new Date().getTime()
     }
 
@@ -173,10 +192,23 @@ const generateElectionKey = async (electionId, keyType) => {
     }
 }
 
+const encrypt = async (id, keyType, key) => {
+    const ctx = {"id": id,"type": keyType}
+    return await kmsEncrypt(ctx,  key);
+}
+
 const getDecryptedKey = async (electionId, keyType) => {
     let key = await getKey(electionId, keyType);
     const ctx = {"id": electionId,"type": keyType}
-    return await kmsDecrypt(ctx, key.encryptedValue);
+    return await kmsDecrypt(ctx, key.value);
+}
+
+const generateJwtKeys = async (electionId) => {
+    let keys = ursa.generatePrivateKey();
+    let encryptedPrivatePem = await encrypt(electionId, keys.toPrivatePem('base64'), "jwt")
+    let pubPem = keys.toPublicPem('base64');
+    await addKey(electionId, "jwt-private", encryptedPrivatePem)
+    await addUnencryptedKey(electionId, "jwt-public", pubPem);
 }
 
 const clearVoterKey = async (electionId) => {
@@ -186,7 +218,10 @@ const clearVoterKey = async (electionId) => {
             "electionId": electionId,
             "keyType": "voter"
         },
-        UpdateExpression: "set encryptedValue = :s",
+        UpdateExpression: "set #vl = :s",
+        ExpressionAttributeNames: {
+            "#vl": "value"
+        },
         ExpressionAttributeValues:{
             ":s": "CLEARED"
         }
@@ -195,6 +230,7 @@ const clearVoterKey = async (electionId) => {
 }
 
 module.exports = { 
+    generateJwtKeys: generateJwtKeys,
     setResultsAvailable: setResultsAvailable,
     generateElectionKey: generateElectionKey,
     clearVoterKey: clearVoterKey,

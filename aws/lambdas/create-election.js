@@ -1,5 +1,3 @@
-const AWS = require("aws-sdk");
-
 const firebaseUpdater = require("./firebase-updater.js");
 const crypto = require('crypto');
 const iopipe = require('@iopipe/iopipe')({ token: process.env.IO_PIPE_TOKEN });
@@ -149,6 +147,11 @@ const createElection = async(electionId, election, network, user) => {
     await database.addElection(obj)
 
     await addDeployedElections(electionId, el.address, election, version, network);
+
+    if(netvoteKeyAuth) {
+        await database.generateJwtKeys(electionId);
+    }
+
     return el;
 }
 
