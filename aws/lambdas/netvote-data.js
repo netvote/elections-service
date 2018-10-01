@@ -205,7 +205,7 @@ const getDecryptedKey = async (electionId, keyType) => {
 
 const generateJwtKeys = async (electionId) => {
     let keys = ursa.generatePrivateKey();
-    let encryptedPrivatePem = await encrypt(electionId, keys.toPrivatePem('base64'), "jwt")
+    let encryptedPrivatePem = await encrypt(electionId, "jwt-private", keys.toPrivatePem('base64'))
     let pubPem = keys.toPublicPem('base64');
     await addKey(electionId, "jwt-private", encryptedPrivatePem)
     await addUnencryptedKey(electionId, "jwt-public", pubPem);
