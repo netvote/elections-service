@@ -128,6 +128,7 @@ const createElection = async(electionId, election, network, user) => {
     
     await Promise.all(setupTasks);
 
+    let netvoteKeyAuth = election.netvoteKeyAuth || false;
     let obj = {
         "electionId": electionId,
         "owner": election.uid,
@@ -135,7 +136,7 @@ const createElection = async(electionId, election, network, user) => {
         "txId": el.transactionHash,
         "network": network,
         "version": version,
-        "netvoteKeyAuth": !!(el.netvoteKeyAuth),
+        "netvoteKeyAuth": netvoteKeyAuth,
         "address": el.address,
         "resultsAvailable": election.isPublic,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
