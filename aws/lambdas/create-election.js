@@ -127,6 +127,10 @@ const createElection = async(electionId, election, network, user) => {
     await Promise.all(setupTasks);
 
     let netvoteKeyAuth = election.netvoteKeyAuth || false;
+    if(netvoteKeyAuth){
+        await generateKey(electionId, "jwt-anonymizer")
+    }
+
     let obj = {
         "electionId": electionId,
         "owner": election.uid,
