@@ -65,6 +65,12 @@ const addDeployedElections = async(electionId, addr, election, version, network)
         },
         closeAfter: {
             integerValue: `${election.closeAfter}`
+        },
+        voteStartTime: {
+            integerValue: `${election.voteStartTime}`
+        },
+        voteEndTime: {
+            integerValue: `${election.voteEndTime}`
         }
     })
 }

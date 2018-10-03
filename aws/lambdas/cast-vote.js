@@ -113,6 +113,11 @@ exports.handler = iopipe(async (event, context, callback) => {
 
         const tx = await ethTransaction(nv, election.address, event.vote, BasePool);
         await updateVoteStatus(electionId, voteId, "complete", tx.tx);
+
+        await database.setJobSuccess(event.jobId, {
+            tx: tx.tx
+        })
+
         await firebaseUpdater.updateStatus(event.callback, {
             tx: tx.tx,
             status: "complete"
@@ -123,6 +128,11 @@ exports.handler = iopipe(async (event, context, callback) => {
         if(voteId){
             await updateVoteStatus(electionId, voteId, "error", "none");
         }
+
+        await database.setJobError(event.jobId, {
+            error: e.message || "no message"
+        })
+
         await firebaseUpdater.updateStatus(event.callback, {
             status: "error",
             error: e.message || "no message"

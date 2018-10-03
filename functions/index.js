@@ -1498,6 +1498,24 @@ adminApp.post('/election', async (req, res) => {
     let autoActivate = !!(req.body.activateNow) || !!(req.body.autoActivate);
     let requireProof = !!(req.body.requireProof);
     let closeAfter = req.body.closeAfter || 0;
+    let voteStartTime = req.body.voteStartTime || 0;
+    let voteEndTime = req.body.voteEndTime || 0;
+
+    let now = new Date().getTime();
+    if(voteEndTime && voteEndTime < now){
+        sendError(res, 400, "voteEndTime cannot be in past")
+        return
+    }
+
+    if(voteStartTime && voteStartTime < now){
+        sendError(res, 400, "voteStartTime cannot be in past")
+        return
+    }
+
+    if((voteStartTime && voteEndTime) && voteStartTime > voteEndTime){
+        sendError(res, 400, "voteStartTime cannot be after voteEndTime")
+        return
+    }
 
     if (!metadataLocation) {
         sendError(res, 400, "metadataLocation is required");
@@ -1541,6 +1559,8 @@ adminApp.post('/election', async (req, res) => {
                 closeAfter: closeAfter,
                 metadataLocation: metadataLocation,
                 autoActivate: autoActivate,
+                voteStartTime: voteStartTime,
+                voteEndTime: voteEndTime,
                 isDemo: !isApi, 
                 uid: req.user.uid
             },
@@ -1808,6 +1828,22 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
     let electionId = req.pool;
     console.info(`CAST VOTE:  election=${electionId}, reqId=${reqId}`)
 
+    let el = await getDeployedElection(electionId);
+
+    let now = new Date().getTime();
+    if(el.voteStartTime){
+        if(el.voteStartTime > now) {
+            sendError(res, 409, 'The time window for voting has not started')
+            return;
+        }
+    }
+    if(el.voteEndTime){
+        if(el.voteEndTime < now) {
+            sendError(res, 409, 'The time window for voting has ended')
+            return;
+        }
+    }
+
     const proof = req.body.proof;
     try {
         voteBuff = Buffer.from(req.body.vote, 'base64');
@@ -1823,7 +1859,7 @@ voterApp.post('/cast', voterTokenCheck, async (req, res) => {
         try{
             let voteId = await hashVoteId(electionId, req.voter)
             let tokenId = await hashTokenId(electionId, req.tokenKey)
-            let el = await getDeployedElection(electionId);
+            
             if(el.stopped || el.status == "stopped") {
                 sendError(res, 409, "Election is no longer accepting votes");
                 return;

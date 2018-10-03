@@ -71,6 +71,8 @@ describe(`End to End Election`, function() {
       'metadataLocation': metadataLocation,
       'allowUpdates': true,
       'closeAfter': new Date().getTime(),
+      'voteStartTime': new Date().getTime()+3000,
+      'voteEndTime': new Date().getTime()+1000000,
       'autoActivate': false,
       'network': TEST_NETWORK
     },
