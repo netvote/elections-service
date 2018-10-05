@@ -1507,11 +1507,6 @@ adminApp.post('/election', async (req, res) => {
         return
     }
 
-    if(voteStartTime && voteStartTime < now){
-        sendError(res, 400, "voteStartTime cannot be in past")
-        return
-    }
-
     if((voteStartTime && voteEndTime) && voteStartTime > voteEndTime){
         sendError(res, 400, "voteStartTime cannot be after voteEndTime")
         return

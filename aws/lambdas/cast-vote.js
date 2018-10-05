@@ -15,7 +15,7 @@ const votedAlready = async (addr, voteId, BasePool) => {
 };
 
 const castVote = async(nv, address, voteObj, BasePool) => {
-    console.log("casting vote from "+nv.gatewayAddress())
+    console.log({message: "casting vote", address: address, vote: voteObj});
     const nonce = await nv.Nonce();
     let tx;
     if(voteObj.proof){
@@ -28,7 +28,7 @@ const castVote = async(nv, address, voteObj, BasePool) => {
 };
 
 const updateVote = async(nv, address, voteObj, BasePool) => {
-    console.log("updating vote from "+nv.gatewayAddress())
+    console.log({message: "updating vote", address: address, vote: voteObj});
     const nonce = await nv.Nonce();
     let tx;
     if(voteObj.proof){
