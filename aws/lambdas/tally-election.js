@@ -15,7 +15,7 @@ exports.handler = iopipe(async (event, context, callback) => {
     try {
         let election = await database.getElection(event.electionId);
         let version = election.version;
-        let validateSignatures = !!(event.validateSignatures);
+        let validateSignatures = !!(election.props.requireProof);
         let address = election.address;
         let nv = await networks.NetvoteProvider(election.network);
         if(!address){
@@ -28,6 +28,12 @@ exports.handler = iopipe(async (event, context, callback) => {
         context.iopipe.label(election.network);
         context.iopipe.label((validateSignatures) ? "signatures" : "no-signatures");
     
+        setTimeout(()=>{
+            if(counter === 0){
+                callback(new Error("timeout while trying to tally"), {message: "timeout trying to tally"})
+            }
+        }, 5000)
+
         let result = await tally.tallyElection({
             electionAddress: address,
             version: version,
@@ -54,6 +60,11 @@ exports.handler = iopipe(async (event, context, callback) => {
     
 
         console.log("result: "+JSON.stringify(result))
+
+        //aws gateway API
+        await database.setJobSuccess(event.jobId, {
+            results: result
+        })
 
         await firebaseUpdater.updateStatus(event.callback, {
             status: "complete",

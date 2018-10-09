@@ -1501,6 +1501,23 @@ adminApp.post('/election', async (req, res) => {
     let voteStartTime = req.body.voteStartTime || 0;
     let voteEndTime = req.body.voteEndTime || 0;
 
+    if(closeAfter && isNaN(closeAfter)){
+        sendError(res, 400, "closeAfter must be numerical")
+        return 
+    }
+    if(voteStartTime && isNaN(voteStartTime)){
+        sendError(res, 400, "voteStartTime must be numerical")
+        return 
+    }
+    if(voteEndTime && isNaN(voteEndTime)){
+        sendError(res, 400, "voteEndTime must be numerical")
+        return 
+    }
+
+    closeAfter = parseInt(closeAfter)
+    voteEndTime = parseInt(voteEndTime)
+    voteStartTime = parseInt(voteStartTime)
+
     let now = new Date().getTime();
     if(voteEndTime && voteEndTime < now){
         sendError(res, 400, "voteEndTime cannot be in past")
