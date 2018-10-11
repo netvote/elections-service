@@ -59,7 +59,7 @@ describe(`Ballot Groups`, function() {
     }
 
     let options = {
-        'name': 'election with signature verification',
+        'name': 'ballot group election',
         'isPublic' : true,
         'requireProof': false,
         'metadataLocation': metadataLocation,
