@@ -391,7 +391,7 @@ const validateRankedChoice = (choice, metadata) => {
     const c = choice;
     const selections = c.pointsAllocations;
     if (!selections || !selections.points ) {
-        throw new Error("INVALID selections be specified for ranked type");
+        throw new Error("INVALID pointsAllocations be specified for ranked type");
     }
     if (selections.points.length !== (metadata.ballotItems.length)) {
         throw new Error("INVALID points must be allocated for each selection (or have 0 specified)");
@@ -460,9 +460,11 @@ const validateChoices = (choices, decisionsMetadata) => {
 
     choices.forEach((c, idx) => {
         let choiceType = decisionsMetadata[idx].type || "single"
-        validations[choiceType](c, decisionsMetadata[idx])
+        if(!c.abstain) {
+            validations[choiceType](c, decisionsMetadata[idx])
+        }
     });
- 
+
     return true;
 };
 
