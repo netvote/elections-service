@@ -32,6 +32,7 @@ deploy_close_election:
 
 deploy_tally_election:
 	aws lambda update-function-code --function-name election-tally --s3-bucket netvote-lambda-code --s3-key lambdas.zip
+	aws lambda update-function-code --function-name election-export --s3-bucket netvote-lambda-code --s3-key lambdas.zip
 
 deploy_get_vote:
 	aws lambda update-function-code --function-name election-lookup-vote --s3-bucket netvote-lambda-code --s3-key lambdas.zip

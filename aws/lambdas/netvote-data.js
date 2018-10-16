@@ -9,6 +9,29 @@ const TABLE_ASYNC_JOBS = "asyncJobs";
 const ENCRYPT_KEY_ARN = "arn:aws:kms:us-east-1:891335278704:key/994f296e-ce2c-4f2b-8cef-48d16644af09";
 
 
+const asyncLambda = (name, payload) => {
+    return new Promise((resolve, reject) => {
+        try{
+            const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
+            const lambdaParams = {
+                FunctionName: name,
+                InvocationType: 'Event',
+                LogType: 'None',
+                Payload: JSON.stringify(payload)
+            };
+            lambda.invoke(lambdaParams, function(err, data){
+                if(err){
+                    reject(err)
+                } else{
+                    resolve(data);
+                }
+            });
+        }catch(e){
+            reject(e);
+        }
+    })
+}
+
 const addElection = async (obj) => {
     if(!obj.electionId){
         obj.electionId = uuid();
@@ -240,5 +263,6 @@ module.exports = {
     setElectionStatus: setElectionStatus,
     getVotes: getVotes,
     setJobSuccess: setJobSuccess,
-    setJobError: setJobError
+    setJobError: setJobError,
+    asyncLambda: asyncLambda
 }

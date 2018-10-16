@@ -61,6 +61,9 @@ exports.handler = iopipe(async (event, context, callback) => {
         statusObj.status = "complete"
         console.log(statusObj);
         await firebaseUpdater.updateStatus(event.callback, statusObj, true);
+
+        await database.asyncLambda("election-export", { electionId: event.electionId })
+
         callback(null, "ok")
     }catch(e){
         console.error("error while transacting: ", e);

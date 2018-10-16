@@ -19,6 +19,7 @@
   "dependencies": {
     "@iopipe/iopipe": "^1.8.0",
     "@netvote/elections-tally": "^0.2.10",
+    "archiver": "^3.0.0",
     "crypto": "^1.0.1",
     "googleapis": "^28.1.0",
     "ipfs-mini": "^1.1.2",
