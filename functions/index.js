@@ -126,7 +126,7 @@ const initQr = () => {
 const initIpfs = () => {
     if(!ipfs){
         let IPFS = require('ipfs-mini');
-        ipfs = new IPFS({ host: 'ipfs.netvote.io', port: 443, protocol: 'https' });
+        ipfs = new IPFS({ host: 'ipfs.infura.io', port: 443, protocol: 'https' });
     }
 };
 
@@ -1238,26 +1238,30 @@ adminApp.post('/election/ballotGroupAssignment', electionOwnerCheck, async (req,
 
 adminApp.post('/election/keys/upload', electionOwnerCheck, async (req, res) => {
     let electionId = req.body.electionId;
-    let keys = req.body.keys;
+    let keyList = req.body.keys;
     let now = new Date().getTime();
 
-    if (!electionId || !keys) {
+    if (!electionId || !keyList) {
         sendError(res, 400, "keys & electionId are required");
         return;
     }
     
     let db = firestore();
-    let batch = db.batch();
 
-    for (let i = 0; i < keys.length; i++) {
-        const hmacHex = calculateRegKey(electionId, keys[i]);
-        let ref = await db.collection(COLLECTION_VOTER_IDS).doc(hmacHex);
-        batch.set(ref, { createdBy: req.user.uid, pool: electionId, createdAt: now });
-    }
-
-    await batch.commit();
+    var i,j,keys,chunk = 500;
+    for (i=0,j=keyList.length; i<j; i+=chunk) {
+        keys = keyList.slice(i,i+chunk);
+        let batch = db.batch();
+        for (let i = 0; i < keys.length; i++) {
+            const hmacHex = calculateRegKey(electionId, keys[i]);
+            let ref = await db.collection(COLLECTION_VOTER_IDS).doc(hmacHex);
+            batch.set(ref, { createdBy: req.user.uid, pool: electionId, createdAt: now });
+        }
     
-    res.send({"status":"ok","count": keys.length});
+        await batch.commit();
+    }
+    
+    res.send({"status":"ok","count": keyList.length});
     return;
 });
 
