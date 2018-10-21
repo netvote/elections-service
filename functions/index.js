@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 let web3 = require('web3-utils')
+let IPFS = require('ipfs-mini');
 
 admin.initializeApp({
     credential: admin.credential.cert({
@@ -86,7 +87,6 @@ let civicSip;
 let civicClient;
 const utilKey = functions.config().netvote.secret.utilkey;
 let uuid;
-let ipfs;
 let QRCode;
 let uportCfg;
 let uportSigner;
@@ -123,12 +123,9 @@ const initQr = () => {
     }
 }
 
-const initIpfs = () => {
-    if(!ipfs){
-        let IPFS = require('ipfs-mini');
-        ipfs = new IPFS({ host: 'ipfs.infura.io', port: 443, protocol: 'https' });
-    }
-};
+const getIpfsClient = (ipfsUrl) => {
+    return  new IPFS({ host: ipfsUrl, port: 443, protocol: 'https' });
+}
 
 const initUuid = () => {
     if (!uuid) {
@@ -302,10 +299,26 @@ const ballotGroupAuthorize = async (req, res, next) => {
     return next();
 };
 
-const getFromIPFS = (location) => {
-    initIpfs();
+let IPFS_URL_LIST = ["ipfs.infura.io","ipfs.netvote.io"];
+
+const getFromIPFS = async (location) => {
+    let retries = 2;
+    for(let i=0; i<retries; i++){
+        for(let u = 0; u<IPFS_URL_LIST.length; u++){
+            try{
+                let ipfs = getIpfsClient(IPFS_URL_LIST[u])
+                return await getFromIPFSUnsafe(ipfs, location);
+            } catch (e) {
+                //already logged, try again
+            }
+        }
+    }
+    throw new Error("Error trying to access ipfs: "+location)
+}
+
+const getFromIPFSUnsafe = (ipfsObj, location) => {
     return new Promise((resolve, reject) => {
-        ipfs.catJSON(location, (err, obj) => {
+        ipfsObj.catJSON(location, (err, obj) => {
             if (err) {
                 console.error(err);
                 reject(err);
@@ -470,7 +483,6 @@ const validateChoices = (choices, decisionsMetadata) => {
 
 // only supports single-tiered ballot currently
 const validateVote = async (vote, metadataLocation, requireProof) => {
-    initIpfs()
     const metadata = await ipfsLookup(metadataLocation)
 
     if(vote.ballotVotes.length !== 1){
@@ -1731,30 +1743,21 @@ let invokeLambda = (name, payload, callback) => {
     lambda.invoke(lambdaParams, callback);
 }
 
-let asyncInvokeLambda = (name, payload) => {
-    return new Promise((resolve, reject) => {
-        try{
-            const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
-            const lambdaParams = {
-                FunctionName: name,
-                InvocationType: 'Event',
-                LogType: 'None',
-                Payload: JSON.stringify(payload)
-            };
-            console.log("START LAMBDA: "+name+", payload="+JSON.stringify(payload))
-            lambda.invoke(lambdaParams, function(err, data){
-                if(err){
-                    reject(err)
-                } else{
-                    console.log("COMPLETE LAMBDA: "+name+", payload="+JSON.stringify(payload))
-                    resolve(data);
-                }
-            });
-        }catch(e){
-            console.error("error invoking lambda: "+name+", payload="+JSON.stringify(payload), error);
-            reject(e);
-        }
-    })
+let asyncInvokeLambda = async (name, payload) => {
+    try{
+        const lambda = new AWS.Lambda({ region: "us-east-1", apiVersion: '2015-03-31' });
+        const lambdaParams = {
+            FunctionName: name,
+            InvocationType: 'Event',
+            LogType: 'None',
+            Payload: JSON.stringify(payload)
+        };
+        console.log(lambdaParams);
+        return await lambda.invoke(lambdaParams).promise();
+    } catch(e){
+        console.error("error invoking lambda: "+name+", payload="+JSON.stringify(payload), error);
+        throw e;
+    }
 }
 
 // voterApp.post('/token/auth', tokenOwnerCheck, (req, res) => {
