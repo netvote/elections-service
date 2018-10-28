@@ -311,17 +311,18 @@ describe(`Ranked Choice Election`, function() {
         const ballotTotal = result.ballots[deployedElection.address].totalVotes;
         assert.equal(ballotTotal, 3, "expected 3 votes");
         const ballotResults = result.ballots[deployedElection.address].results['ALL'];
+
         expectResult(ballotResults[0], itemName(0,0), 3)
         expectResult(ballotResults[0], itemName(0,1), 0)
         expectResult(ballotResults[1], itemName(1,0), 2)
         expectResult(ballotResults[1], itemName(1,1), 1)
-        expectResult(ballotResults[2], itemName(2,0), 5)
-        expectResult(ballotResults[2], itemName(2,1), 8)
-        expectResult(ballotResults[2], itemName(2,2), 8)
-        expectResult(ballotResults[2], itemName(2,3), 9)
-        expectResult(ballotResults[3], itemName(3,0), 4)
-        expectResult(ballotResults[3], itemName(3,1), 7)
-        expectResult(ballotResults[3], itemName(3,2), 7)
+        expectResult(ballotResults[2], itemName(2,0), 1.6666666666666667)
+        expectResult(ballotResults[2], itemName(2,1), 2.6666666666666665)
+        expectResult(ballotResults[2], itemName(2,2), 2.6666666666666665)
+        expectResult(ballotResults[2], itemName(2,3), 3)
+        expectResult(ballotResults[3], itemName(3,0), 1.3333333333333333)
+        expectResult(ballotResults[3], itemName(3,1), 2.3333333333333335)
+        expectResult(ballotResults[3], itemName(3,2), 2.3333333333333335)
         expectResult(ballotResults[4], itemName(4,0), 0)
         expectResult(ballotResults[4], itemName(4,1), 3)
       })
