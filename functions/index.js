@@ -323,7 +323,7 @@ const getFromIPFSUnsafe = (ipfsObj, location) => {
             if(!completed){
                 reject(new Error("IPFS timeout"));
             }
-        }, 10000);
+        }, 5000);
         ipfsObj.catJSON(location, (err, obj) => {
             completed = true;
             if (err) {

@@ -57,20 +57,27 @@ const updateVoteStatus = async(electionId, voteId, status, txId) => {
     await docClient.update(params).promise();
 }
 
-const insertVote = async(event) => {
+const insertVote = async(event, election) => {
     let md5sum = crypto.createHash('md5');
-    md5sum.update(`${event.vote.voteId}:${event.vote.encryptedVote}:${event.vote.tokenId}`);
+    md5sum.update(`${event.vote.voteId}:${event.vote.tokenId}`);
     let voteId = md5sum.digest('hex');
+
+    let now = new Date();
+
+    let payload = {
+        "electionId": event.electionId,
+        "voteId": voteId,
+        "voterId": event.vote.voteId,
+        "owner": election.owner,
+        "event": event,
+        "txTimestamp": now.getTime(),
+        "mode": (election.test) ? "TEST" : "PROD",
+        "txStatus": "pending"
+    };
+
     let params = {
         TableName: "votes",
-        Item: {
-            "electionId": event.electionId,
-            "voteId": voteId,
-            "voterId": event.vote.voteId,
-            "event": event,
-            "txTimestamp": new Date().getTime(),
-            "txStatus": "pending"
-        }
+        Item: payload
     }
     await docClient.put(params).promise();
     return voteId;
@@ -82,9 +89,10 @@ exports.handler = iopipe(async (event, context, callback) => {
     let voteId;
     let electionId;
     try {
-        voteId = await insertVote(event);
         electionId = event.electionId;
         let election = await database.getElection(electionId);
+        voteId = await insertVote(event, election);
+        
         console.log({electionId: electionId, voteId: voteId})
 
         let version = election.version;

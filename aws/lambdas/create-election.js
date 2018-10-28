@@ -6,6 +6,7 @@ const networks = require("./eth-networks.js");
 const database = require("./netvote-data.js");
 
 const VOTE_LIMIT = process.env.VOTE_LIMIT || "10000";
+const TEST_VOTE_LIMIT = process.env.TEST_VOTE_LIMIT || "100";
 
 const toHmac = (value, key) => {
     const hmac = crypto.createHmac('sha256', key);
@@ -75,11 +76,12 @@ const addDeployedElections = async(electionId, addr, election, version, network)
     })
 }
 
-const transferVoteAllowance = async (nv, vc, address) => {
+const transferVoteAllowance = async (nv, vc, address, test) => {
     let nonce = await nv.Nonce();
     let web3 = await nv.web3();
-    await vc.transfer(address, web3.utils.toWei(VOTE_LIMIT, 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
-    console.log(`transfered ${VOTE_LIMIT} vote token to election: ${address}`)
+    let voteLimit = (test) ? TEST_VOTE_LIMIT : VOTE_LIMIT;
+    await vc.transfer(address, web3.utils.toWei(voteLimit, 'ether'), {nonce: nonce, from: nv.gatewayAddress()})
+    console.log(`transfered ${voteLimit} vote token to election: ${address}`)
 }
 
 const postPrivateKey = async (nv, electionId, address, isPublic) => {
@@ -126,7 +128,7 @@ const createElection = async(electionId, election, network, user) => {
     await firebaseSaveHashKey("hashSecrets", electionId, hashKey.encrypted);
 
     let setupTasks = []
-    setupTasks.push(transferVoteAllowance(nv, VoteContract, el.address))
+    setupTasks.push(transferVoteAllowance(nv, VoteContract, el.address, election.test))
     setupTasks.push(postPrivateKey(nv, electionId, el.address, election.isPublic))
     setupTasks.push(addElectionToAllowance(nv, VoteContract, el.address));
     
@@ -146,6 +148,7 @@ const createElection = async(electionId, election, network, user) => {
         "version": version,
         "netvoteKeyAuth": netvoteKeyAuth,
         "address": el.address,
+        "mode": (election.test) ? "TEST" : "PROD",
         "resultsAvailable": election.isPublic,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
     }
