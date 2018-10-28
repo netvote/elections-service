@@ -5,9 +5,32 @@ const uuid = require('uuid/v4');
 
 let Vote;
 
-const ipfs = new IPFS({ host: 'ipfs.netvote.io', protocol: 'https', port: 8443 });
+let IPFS_CFG = [{
+        host: "ipfs.infura.io",
+        protocol: 'https'
+    },{
+        host: "ipfs.netvote.io",
+        port: 8443,
+        protocol: 'https'
+    }
+]
 
-const saveToIPFS = (data) => {
+const saveToIPFS = async (data) => {
+    let retries = 2;
+    for(let i=0; i<retries; i++){
+        for(let u = 0; u<IPFS_CFG.length; u++){
+            try{
+                let ipfs = new IPFS(IPFS_CFG[u]);
+                return await await saveToIPFSUnsafe(ipfs, data);
+            } catch (e) {
+                console.warn("warning, cannot save to ipfs...trying again");
+            }
+        }
+    }
+    throw new Error("All attempts failed trying to access ipfs: "+location)
+}
+
+const saveToIPFSUnsafe = (ipfs, data) => {
     return new Promise((resolve, reject) => {
         ipfs.add(JSON.stringify(data), (err, result) => {
             if(err){
@@ -24,6 +47,17 @@ const initProto = async () => {
         let root = await protobuf.load("../functions/vote.proto");
         Vote = root.lookupType("netvote.Vote");
     }
+}
+
+const validateProof = async (voteBase64, proofObj) => {
+    if(!proofObj.signature){
+        throw new Error("signature is not specified in IPFS proof")
+    }
+    if(!proofObj.publicKey){
+        throw new Error("publicKey is not specified in IPFS proof")
+    }
+    const pub = ursa.createPublicKey(proofObj.publicKey, 'base64');    
+    return pub.hashAndVerify('md5', new Buffer(voteBase64), proofObj.signature, "base64");
 }
 
 const signVote = async (voteBase64) => {
@@ -61,5 +95,7 @@ const encodeVote = async (payload, signatures) => {
 
 module.exports = {
     signVote: signVote,
-    encodeVote: encodeVote
+    encodeVote: encodeVote,
+    validateProof: validateProof,
+    saveToIPFS: saveToIPFS
 }

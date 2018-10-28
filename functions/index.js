@@ -299,7 +299,7 @@ const ballotGroupAuthorize = async (req, res, next) => {
     return next();
 };
 
-let IPFS_URL_LIST = ["ipfs.infura.io","ipfs.netvote.io"];
+let IPFS_URL_LIST = ["ipfs.netvote.io", "ipfs.infura.io"];
 
 const getFromIPFS = async (location) => {
     let retries = 2;
@@ -318,7 +318,14 @@ const getFromIPFS = async (location) => {
 
 const getFromIPFSUnsafe = (ipfsObj, location) => {
     return new Promise((resolve, reject) => {
+        let completed = false;
+        setTimeout(function(){
+            if(!completed){
+                reject(new Error("IPFS timeout"));
+            }
+        }, 10000);
         ipfsObj.catJSON(location, (err, obj) => {
+            completed = true;
             if (err) {
                 console.error(err);
                 reject(err);
