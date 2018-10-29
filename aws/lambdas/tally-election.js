@@ -32,7 +32,7 @@ exports.handler = iopipe(async (event, context, callback) => {
             if(counter === 0){
                 callback(new Error("timeout while trying to tally"), {message: "timeout trying to tally"})
             }
-        }, 5000)
+        }, 10000)
 
         let result = await tally.tallyElection({
             electionAddress: address,
