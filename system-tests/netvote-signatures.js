@@ -27,7 +27,7 @@ const saveToIPFS = async (data) => {
             }
         }
     }
-    throw new Error("All attempts failed trying to access ipfs: "+location)
+    throw new Error("All attempts failed trying to access ipfs: ")
 }
 
 const saveToIPFSUnsafe = (ipfs, data) => {

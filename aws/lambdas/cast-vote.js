@@ -57,19 +57,21 @@ const updateVoteStatus = async(electionId, voteId, status, txId) => {
     await docClient.update(params).promise();
 }
 
-const insertVote = async(event, election) => {
+const getVoteId = async(event) => {
     let md5sum = crypto.createHash('md5');
     md5sum.update(`${event.vote.voteId}:${event.vote.tokenId}`);
-    let voteId = md5sum.digest('hex');
+    return md5sum.digest('hex');
+}
 
+const insertVote = async(voteId, event, election, voteType) => {
     let now = new Date();
-
     let payload = {
         "electionId": event.electionId,
         "voteId": voteId,
         "voterId": event.vote.voteId,
         "owner": election.owner,
         "event": event,
+        "voteType": voteType,
         "txTimestamp": now.getTime(),
         "mode": (election.test) ? "TEST" : "PROD",
         "txStatus": "pending"
@@ -80,7 +82,6 @@ const insertVote = async(event, election) => {
         Item: payload
     }
     await docClient.put(params).promise();
-    return voteId;
 }
 
 exports.handler = iopipe(async (event, context, callback) => {
@@ -91,15 +92,20 @@ exports.handler = iopipe(async (event, context, callback) => {
     try {
         electionId = event.electionId;
         let election = await database.getElection(electionId);
-        voteId = await insertVote(event, election);
-        
+        let voteId = await getVoteId(event);
+
         console.log({electionId: electionId, voteId: voteId})
 
         let version = election.version;
         let nv = await networks.NetvoteProvider(election.network);
         let BasePool = await nv.BasePool(version);
         let update = await votedAlready(election.address, event.vote.voteId, BasePool);
-    
+
+        let voteType = (update) ? "revote" : "vote"
+        context.iopipe.label(voteType);
+
+        await insertVote(voteId, event, election, voteType);
+
         context.iopipe.label(electionId);
         context.iopipe.label(election.network);
         context.iopipe.label(voteId);
@@ -116,8 +122,6 @@ exports.handler = iopipe(async (event, context, callback) => {
         }
 
         const ethTransaction = (update) ? updateVote : castVote;
-        let voteType = (update) ? "revote" : "vote"
-        context.iopipe.label(voteType);
 
         const tx = await ethTransaction(nv, election.address, event.vote, BasePool);
         await updateVoteStatus(electionId, voteId, "complete", tx.tx);

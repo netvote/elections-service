@@ -1595,6 +1595,7 @@ adminApp.post('/election', async (req, res) => {
                 requireProof: requireProof,
                 closeAfter: closeAfter,
                 metadataLocation: metadataLocation,
+                netvoteKeyAuth: true,
                 autoActivate: autoActivate,
                 voteStartTime: voteStartTime,
                 voteEndTime: voteEndTime,
