@@ -145,13 +145,17 @@ const setJobError = async (jobId, message) => {
     await setJobResult(jobId, {message: message}, "error")
 }
 
-const addKey = async (electionId, keyType, key) => {
+const addKey = async (electionId, keyType, key, mode) => {
     let obj = {
         electionId: electionId,
         keyType: keyType,
         value: key,
         encrypted: true,
         txTimestamp: new Date().getTime()
+    }
+
+    if(mode === "TEST"){
+        obj.ttlTimestamp = Math.floor((new Date().getTime() + 1000*60*60*24*30)/1000);
     }
 
     let params = {
@@ -162,13 +166,17 @@ const addKey = async (electionId, keyType, key) => {
     return obj.electionId;
 }
 
-const addUnencryptedKey = async (electionId, keyType, key) => {
+const addUnencryptedKey = async (electionId, keyType, key, mode) => {
     let obj = {
         electionId: electionId,
         keyType: keyType,
         value: key,
         encrypted: false,
         txTimestamp: new Date().getTime()
+    }
+
+    if(mode === "TEST"){
+        obj.ttlTimestamp = Math.floor((new Date().getTime() + 1000*60*60*24*30)/1000);
     }
 
     let params = {
@@ -204,11 +212,11 @@ const getKey = async (electionId, keyType) => {
     return data.Item;
 }
 
-const generateElectionKey = async (electionId, keyType) => {
+const generateElectionKey = async (electionId, keyType, mode) => {
     const ctx = {"id": electionId,"type": keyType}
     let key = uuid();
     let encrypted = await kmsEncrypt(ctx,  key);
-    await addKey(electionId, keyType, encrypted);
+    await addKey(electionId, keyType, encrypted, mode);
     return {
         plaintext: key,
         encrypted: encrypted
@@ -226,12 +234,12 @@ const getDecryptedKey = async (electionId, keyType) => {
     return await kmsDecrypt(ctx, key.value);
 }
 
-const generateJwtKeys = async (electionId) => {
+const generateJwtKeys = async (electionId, mode) => {
     let keys = ursa.generatePrivateKey();
     let encryptedPrivatePem = await encrypt(electionId, "jwt-private", keys.toPrivatePem('base64'))
     let pubPem = keys.toPublicPem('base64');
-    await addKey(electionId, "jwt-private", encryptedPrivatePem)
-    await addUnencryptedKey(electionId, "jwt-public", pubPem);
+    await addKey(electionId, "jwt-private", encryptedPrivatePem, mode)
+    await addUnencryptedKey(electionId, "jwt-public", pubPem, mode);
 }
 
 const clearVoterKey = async (electionId) => {

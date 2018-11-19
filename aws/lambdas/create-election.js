@@ -14,8 +14,8 @@ const toHmac = (value, key) => {
     return hmac.digest('hex');
 };
 
-const generateKey = async (electionId, keyType) => {
-    return await database.generateElectionKey(electionId, keyType);
+const generateKey = async (electionId, keyType, mode) => {
+    return await database.generateElectionKey(electionId, keyType, mode);
 }
 
 const firebaseSaveHashKey = async(collection, id, encrypted) =>{
@@ -84,8 +84,8 @@ const transferVoteAllowance = async (nv, vc, address, test) => {
     console.log(`transfered ${voteLimit} vote token to election: ${address}`)
 }
 
-const postPrivateKey = async (nv, electionId, address, isPublic) => {
-    let encryptionKey = await generateKey(electionId, "encryption");
+const postPrivateKey = async (nv, electionId, address, isPublic, mode) => {
+    let encryptionKey = await generateKey(electionId, "encryption", mode);
     await firebaseSaveHashKey("encryptionKeys", electionId, encryptionKey.encrypted);
     if (isPublic) {
         let nonce = await nv.Nonce();
@@ -123,19 +123,19 @@ const createElection = async(electionId, election, network, user) => {
         {from: gatewayAddress, nonce: nonce})
     
     console.log("created election: "+el.address+", id="+electionId);
+    let mode = (election.test) ? "TEST" : "PROD";
 
-    let hashKey = await generateKey(electionId, "voter");
+    let hashKey = await generateKey(electionId, "voter", mode);
     await firebaseSaveHashKey("hashSecrets", electionId, hashKey.encrypted);
 
     let setupTasks = []
     setupTasks.push(transferVoteAllowance(nv, VoteContract, el.address, election.test))
-    setupTasks.push(postPrivateKey(nv, electionId, el.address, election.isPublic))
+    setupTasks.push(postPrivateKey(nv, electionId, el.address, election.isPublic, mode))
     setupTasks.push(addElectionToAllowance(nv, VoteContract, el.address));
     
     await Promise.all(setupTasks);
 
     let netvoteKeyAuth = election.netvoteKeyAuth || false;
-    await generateKey(electionId, "jwt-anonymizer")
 
     let obj = {
         "electionId": electionId,
@@ -147,7 +147,7 @@ const createElection = async(electionId, election, network, user) => {
         "netvoteKeyAuth": netvoteKeyAuth,
         "authType": election.authType,
         "address": el.address,
-        "mode": (election.test) ? "TEST" : "PROD",
+        "mode": mode,
         "resultsAvailable": election.isPublic,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
     }
@@ -163,8 +163,8 @@ const createElection = async(electionId, election, network, user) => {
     await database.addElection(obj)
 
     await addDeployedElections(electionId, el.address, election, version, network);
-
-    await database.generateJwtKeys(electionId);
+    await generateKey(electionId, "jwt-anonymizer", mode)
+    await database.generateJwtKeys(electionId, mode);
 
     return el;
 }
