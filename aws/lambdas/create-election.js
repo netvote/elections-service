@@ -135,9 +135,7 @@ const createElection = async(electionId, election, network, user) => {
     await Promise.all(setupTasks);
 
     let netvoteKeyAuth = election.netvoteKeyAuth || false;
-    if(netvoteKeyAuth){
-        await generateKey(electionId, "jwt-anonymizer")
-    }
+    await generateKey(electionId, "jwt-anonymizer")
 
     let obj = {
         "electionId": electionId,
@@ -147,10 +145,15 @@ const createElection = async(electionId, election, network, user) => {
         "network": network,
         "version": version,
         "netvoteKeyAuth": netvoteKeyAuth,
+        "authType": election.authType,
         "address": el.address,
         "mode": (election.test) ? "TEST" : "PROD",
         "resultsAvailable": election.isPublic,
         "electionStatus": (election.autoActivate) ? "voting" : "building"
+    }
+
+    if(election.test) {
+        obj["ttlTimestamp"] = Math.floor((new Date().getTime() + 1000*60*60*24*30)/1000);
     }
 
     if(user){
@@ -161,9 +164,7 @@ const createElection = async(electionId, election, network, user) => {
 
     await addDeployedElections(electionId, el.address, election, version, network);
 
-    if(netvoteKeyAuth) {
-        await database.generateJwtKeys(electionId);
-    }
+    await database.generateJwtKeys(electionId);
 
     return el;
 }
@@ -176,7 +177,7 @@ exports.handler = iopipe(async (event, context, callback) => {
         return;
     }
     try {
-        let electionId = uuid();
+        let electionId = event.electionId || uuid();
         const tx = await createElection(electionId, event.election, event.network, event.user);
 
         context.iopipe.label(electionId);

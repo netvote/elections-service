@@ -73,9 +73,13 @@ const insertVote = async(voteId, event, election, voteType) => {
         "event": event,
         "voteType": voteType,
         "txTimestamp": now.getTime(),
-        "mode": (election.test) ? "TEST" : "PROD",
+        "mode": election.mode,
         "txStatus": "pending"
     };
+
+    if(election.mode === "TEST") {
+        payload["ttlTimestamp"] = Math.floor((new Date().getTime() + 1000*60*60*24*30)/1000);
+    }
 
     let params = {
         TableName: "votes",
